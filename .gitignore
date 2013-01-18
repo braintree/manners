@@ -1,0 +1,15 @@
+*.swp
+.DS_Store
+.hg
+.hgignore
+.hgtags
+.bzr
+.bzrignore
+.vagrant
+.gitignore
+
+tmp
+
+tags
+
+*~
