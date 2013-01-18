@@ -1,6 +1,6 @@
 Manners
 =========
 
-A polite Go webserver that knows how to leave gracefully.
+A *polite* Go webserver.
 
 Manners allows you to shut your Go webserver down gracefully, without dropping any requests.
