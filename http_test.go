@@ -5,17 +5,14 @@ import (
 	"syscall"
 	"testing"
 	"time"
+  "strings"
+  "fmt"
 )
-
-type MyResponseWriter struct {
-	header http.Header
-	bytes  []byte
-}
 
 type SlowHandler struct{}
 
 func (this *SlowHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
-	time.Sleep(10 * 1000)
+	time.Sleep(5 * 1000)
 	response.Write([]byte("We made it!"))
 }
 
@@ -27,10 +24,13 @@ func TestTheServerShutsDownGracefully(*testing.T) {
 		panic(err)
 	}
 
-	request, err := http.NewRequest("GET", "/")
-	if err != nil {
+  responseWriter := NewResponseWriter()
+	request, err := http.NewRequest("GET", "/", strings.NewReader("foo"))
+  if err != nil {
 		panic(err)
 	}
-	ShutDownChannel <- syscall.SIGINT
 
+  go slowHandler.ServeHTTP(responseWriter, request)
+  ShutDownChannel <- syscall.SIGINT
+  fmt.Println(responseWriter.Content)
 }

@@ -3,7 +3,7 @@ package main
 import (
   "net/http"
   "time"
-  "github.com/braintreeps/manners"
+  "github.com/lionelbarrow/manners"
 )
 
 // Our slow  handler implements http.Handler. But the requests take so long to handle!
@@ -17,7 +17,7 @@ func (this *SlowHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 
 // Boot up the slow handler, but let the well-mannered server serve it.
 func main() {
-  slowHandler := SlowHandler{}
+  slowHandler := &SlowHandler{}
   gracefulServer := manners.GracefulServer(slowHandler, ":8000")
   err := gracefulServer.ListenAndServe()
   if err != nil {
