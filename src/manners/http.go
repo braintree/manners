@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+  "errors"
 )
 
 func ListenAndServe(handler http.Handler, port string) {
@@ -17,7 +18,7 @@ func ListenAndServe(handler http.Handler, port string) {
   go WaitForSignal()
 	ShutDownHandler = func() { fmt.Println("Caught shutdown!"); listener.Close() }
 	err = server.Serve(listener)
-	if err != nil {
+	if err != nil && err.Error() != "The server is shutting down." {
 		error := fmt.Sprintf("Could not serve HTTP: %s", err.Error())
 		panic(error)
 	}
@@ -30,11 +31,10 @@ type GracefulListener struct {
 
 func (this *GracefulListener) Accept() (net.Conn, error) {
 	conn, err := this.Listener.Accept()
-	fmt.Println("Got myself a connection!")
   if err != nil {
 		if !this.open {
-      fmt.Println("Waiting")
 			WaitForFinish()
+      err = errors.New("The server is shutting down.")
 		}
 		return nil, err
 	}
@@ -58,6 +58,5 @@ type GracefulConnection struct {
 func (this GracefulConnection) Close() error {
 	err := this.Conn.Close()
 	FinishRoutine()
-  fmt.Println("Connection closed!")
 	return err
 }

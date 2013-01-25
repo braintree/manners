@@ -1,7 +1,6 @@
 package manners
 
 import (
-  "fmt"
   "os"
 	"os/signal"
 	"sync"
@@ -26,9 +25,7 @@ func WaitForFinish() {
 }
 
 func WaitForSignal() {
-  fmt.Println("Waiting for a signal")
 	signal.Notify(ShutDownChannel)
 	<-ShutDownChannel
-  fmt.Println("Caught me a signal")
 	ShutDownHandler()
 }

@@ -18,11 +18,7 @@ func (this *SlowHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 
 func TestTheServerShutsDownGracefully(T *testing.T) {
 	slowHandler := &SlowHandler{}
-	gracefulServer := GracefulServer(slowHandler, ":8000")
-	err := gracefulServer.ListenAndServe()
-	if err != nil {
-		panic(err)
-	}
+	ListenAndServe(slowHandler, ":8000")
 
   responseWriter := NewResponseWriter()
 	request, err := http.NewRequest("GET", "/", strings.NewReader("foo"))
