@@ -12,11 +12,11 @@ import (
 type SlowHandler struct{}
 
 func (this *SlowHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
-	time.Sleep(5 * 1000)
+	time.Sleep(5e9)
 	response.Write([]byte("We made it!"))
 }
 
-func TestTheServerShutsDownGracefully(*testing.T) {
+func TestTheServerShutsDownGracefully(T *testing.T) {
 	slowHandler := &SlowHandler{}
 	gracefulServer := GracefulServer(slowHandler, ":8000")
 	err := gracefulServer.ListenAndServe()
@@ -31,6 +31,8 @@ func TestTheServerShutsDownGracefully(*testing.T) {
 	}
 
   go slowHandler.ServeHTTP(responseWriter, request)
+  fmt.Println("Before call to SIGINT")
   ShutDownChannel <- syscall.SIGINT
   fmt.Println(responseWriter.Content)
+  T.Error("false")
 }
