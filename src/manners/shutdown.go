@@ -1,15 +1,15 @@
 package manners
 
 import (
-	"os"
+  "os"
 	"os/signal"
 	"sync"
-	"syscall"
 )
 
 var (
+	ShutDownHandler func()
+	ShutDownChannel = make(chan os.Signal, 1)
 	waitGroup       = sync.WaitGroup{}
-	shutDownHandler func()
 )
 
 func StartRoutine() {
@@ -20,13 +20,12 @@ func FinishRoutine() {
 	waitGroup.Done()
 }
 
-func waitForFinish() {
+func WaitForFinish() {
 	waitGroup.Wait()
 }
 
-func waitForSignal() {
-	ch := make(chan os.Signal)
-	signal.Notify(ch, syscall.SIGINT)
-	<-ch
-	shutDownHandler()
+func WaitForSignal() {
+	signal.Notify(ShutDownChannel)
+	<-ShutDownChannel
+	ShutDownHandler()
 }
