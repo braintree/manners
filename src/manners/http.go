@@ -1,27 +1,36 @@
 package manners
 
 import (
-	"fmt"
 	"net"
 	"net/http"
   "errors"
 )
 
-func ListenAndServe(handler http.Handler, port string) {
-	baseListener, err := net.Listen("tcp", port)
-	if err != nil {
-		error := fmt.Sprintf("Could not open TCP socket on port %s: %s", port, err.Error())
-		panic(error)
-	}
-	listener := &GracefulListener{baseListener, true}
+func ListenAndServe(addr string, handler http.Handler) error {
+  listener, err := NewListener(addr)
+  if err != nil { return err }
+  CloseOnShutdown(listener)
+  err = GracefullyServe(listener, handler)
+  return err
+}
+
+func NewListener(addr string) (*GracefulListener, error) {
+	baseListener, err := net.Listen("tcp", addr)
+	if err != nil { return nil, err }
+	listener := GracefulListener{baseListener, true}
+  return &listener, nil
+}
+
+func GracefullyServe(listener *GracefulListener, handler http.Handler) error {
 	server := http.Server{Handler: handler}
   go WaitForSignal()
-	ShutDownHandler = func() { fmt.Println("Caught shutdown!"); listener.Close() }
-	err = server.Serve(listener)
-	if err != nil && err.Error() != "The server is shutting down." {
-		error := fmt.Sprintf("Could not serve HTTP: %s", err.Error())
-		panic(error)
-	}
+  err := server.Serve(listener)
+	if err == nil {
+    return nil
+  } else if err.Error() == "The server is shutting down." {
+    return nil
+  }
+  return err
 }
 
 type GracefulListener struct {

@@ -7,8 +7,8 @@ import (
 )
 
 var (
-	ShutDownHandler func()
-	ShutDownChannel = make(chan os.Signal, 1)
+	ShutDownChannel chan os.Signal
+	shutdownHandler func()
 	waitGroup       = sync.WaitGroup{}
 )
 
@@ -27,5 +27,15 @@ func WaitForFinish() {
 func WaitForSignal() {
 	signal.Notify(ShutDownChannel)
 	<-ShutDownChannel
-	ShutDownHandler()
+	shutdownHandler()
+}
+
+func CloseOnShutdown(listener *GracefulListener) {
+  shutdownHandler = func() {
+    listener.Close()
+  }
+}
+
+func ExcecuteOnShutDown(f func()) {
+  shutdownHandler = f
 }
