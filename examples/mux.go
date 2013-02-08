@@ -16,5 +16,5 @@ func router() http.Handler {
 
 func main() {
   handler := router()
-  manners.ListenAndServe(handler, ":800")
+  manners.ListenAndServe(handler, ":7000")
 }
