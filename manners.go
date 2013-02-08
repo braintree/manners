@@ -20,12 +20,12 @@ func ListenAndServe(addr string, handler http.Handler) error {
 		return err
 	}
 	listener.CloseOnShutdown()
-	go WaitForSignal()
-	err = GracefullyServe(listener, handler)
+	go WaitForShutdown()
+	err = Serve(listener, handler)
 	return err
 }
 
-func GracefullyServe(listener *GracefulListener, handler http.Handler) error {
+func Serve(listener *GracefulListener, handler http.Handler) error {
 	server := http.Server{Handler: handler}
 	err := server.Serve(listener)
 	if err == nil {
@@ -44,7 +44,7 @@ func FinishRoutine() {
 	waitGroup.Done()
 }
 
-func WaitForSignal() {
+func WaitForShutdown() {
 	signal.Notify(ShutDownChannel)
 	<-ShutDownChannel
 	shutdownHandler()
