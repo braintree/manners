@@ -40,7 +40,7 @@ If your request handler spawns Goroutines that are not guaranteed to finish with
 ```
 func (this *MyHTTPHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
   DoAsynchronousComputations()
-  request.
+  // Implicitly return 200
 }
 
 func DoAsynchronousComputations() {
