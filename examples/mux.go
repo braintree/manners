@@ -2,7 +2,7 @@ package main
 
 import (
   "net/http"
-  "manners"
+  "github.com/braintree/manners"
   "github.com/gorilla/mux"
 )
 
