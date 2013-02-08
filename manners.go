@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	ShutDownChannel chan os.Signal
+	ShutdownChannel chan os.Signal
 	shutdownHandler func()
 	waitGroup       = sync.WaitGroup{}
 )
@@ -45,8 +45,8 @@ func FinishRoutine() {
 }
 
 func WaitForShutdown() {
-	signal.Notify(ShutDownChannel)
-	<-ShutDownChannel
+	signal.Notify(ShutdownChannel)
+	<-ShutdownChannel
 	shutdownHandler()
 }
 
