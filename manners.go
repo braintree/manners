@@ -3,9 +3,9 @@ package manners
 import (
 	"net"
 	"net/http"
-  "os"
-  "sync"
-  "os/signal"
+	"os"
+	"os/signal"
+	"sync"
 )
 
 var (
@@ -15,23 +15,25 @@ var (
 )
 
 func ListenAndServe(addr string, handler http.Handler) error {
-  listener, err := NewListener(addr)
-  if err != nil { return err }
-  listener.CloseOnShutdown()
-  go WaitForSignal()
-  err = GracefullyServe(listener, handler)
-  return err
+	listener, err := NewListener(addr)
+	if err != nil {
+		return err
+	}
+	listener.CloseOnShutdown()
+	go WaitForSignal()
+	err = GracefullyServe(listener, handler)
+	return err
 }
 
 func GracefullyServe(listener *GracefulListener, handler http.Handler) error {
 	server := http.Server{Handler: handler}
-  err := server.Serve(listener)
+	err := server.Serve(listener)
 	if err == nil {
-    return nil
-  } else if _, ok := err.(mannersError); ok {
-    return nil
-  }
-  return err
+		return nil
+	} else if _, ok := err.(mannersError); ok {
+		return nil
+	}
+	return err
 }
 
 func StartRoutine() {
@@ -50,9 +52,11 @@ func WaitForSignal() {
 
 func NewListener(addr string) (*GracefulListener, error) {
 	baseListener, err := net.Listen("tcp", addr)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	listener := GracefulListener{baseListener, true}
-  return &listener, nil
+	return &listener, nil
 }
 
 type GracefulListener struct {
@@ -62,10 +66,10 @@ type GracefulListener struct {
 
 func (this *GracefulListener) Accept() (net.Conn, error) {
 	conn, err := this.Listener.Accept()
-  if err != nil {
+	if err != nil {
 		if !this.open {
-		  waitGroup.Wait()
-      err = mannersError{err}
+			waitGroup.Wait()
+			err = mannersError{err}
 		}
 		return nil, err
 	}
@@ -83,7 +87,7 @@ func (this *GracefulListener) Close() error {
 }
 
 func (this *GracefulListener) CloseOnShutdown() {
-  shutdownHandler = func() { this.Close() }
+	shutdownHandler = func() { this.Close() }
 }
 
 type GracefulConnection struct {
@@ -97,5 +101,5 @@ func (this GracefulConnection) Close() error {
 }
 
 type mannersError struct {
-  error
+	error
 }
