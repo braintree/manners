@@ -15,17 +15,18 @@ var (
 )
 
 func ListenAndServe(addr string, handler http.Handler) error {
-	listener, err := NewListener(addr)
+	oldListener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
 	}
-	listener.CloseOnShutdown()
-	go WaitForShutdown()
+	listener := NewListener(oldListener)
 	err = Serve(listener, handler)
 	return err
 }
 
 func Serve(listener *GracefulListener, handler http.Handler) error {
+	listener.CloseOnShutdown()
+	go WaitForShutdown()
 	server := http.Server{Handler: handler}
 	err := server.Serve(listener)
 	if err == nil {
@@ -50,13 +51,9 @@ func WaitForShutdown() {
 	shutdownHandler()
 }
 
-func NewListener(addr string) (*GracefulListener, error) {
-	baseListener, err := net.Listen("tcp", addr)
-	if err != nil {
-		return nil, err
-	}
-	listener := GracefulListener{baseListener, true}
-	return &listener, nil
+func NewListener(oldListener net.Listener) *GracefulListener {
+	listener := GracefulListener{oldListener, true}
+	return &listener
 }
 
 type GracefulListener struct {
