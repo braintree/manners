@@ -37,6 +37,14 @@ func Serve(listener *GracefulListener, handler http.Handler) error {
 	return err
 }
 
+func RunRoutine(f func()) {
+  StartRoutine()
+  go func() {
+    defer FinishRoutine()
+    f()
+  }()
+}
+
 func StartRoutine() {
 	waitGroup.Add(1)
 }
