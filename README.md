@@ -54,6 +54,13 @@ func DoAsynchronousComputations() {
 }
 ```
 
+There's also a handy wrapper for this:
+
+```
+computations := func() { // Do the computations with any arguments you need }
+RunRoutine(computations)
+```
+
 Contributors
 
 @lionelbarrow
