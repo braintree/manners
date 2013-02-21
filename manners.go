@@ -38,11 +38,11 @@ func Serve(listener *GracefulListener, handler http.Handler) error {
 }
 
 func RunRoutine(f func()) {
-  StartRoutine()
-  go func() {
-    defer FinishRoutine()
-    f()
-  }()
+	StartRoutine()
+	go func() {
+		defer FinishRoutine()
+		f()
+	}()
 }
 
 func StartRoutine() {
