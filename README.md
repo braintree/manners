@@ -17,12 +17,14 @@ Advanced users have full access to Manners' internals, so they can construct cus
 ```
 func main() {
   handler = MyHTTPHandler()
-  listener, _ := manners.NewListener(":7000")                                    
-  listener.CloseOnShutdown()              
+  baseListener, err := net.Listen(":7000")
+  if err != nil {
+    panic(err)
+  }
+  listener := manners.NewListener(baseListener)                                                
   
   // Do all sorts of stuff with the listener
-  
-  go manners.WaitForShutdown()                      
+                     
   manners.Serve(listener, handler)
 }
 ```
@@ -50,6 +52,13 @@ func DoAsynchronousComputations() {
     // Do the computations
   }()
 }
+```
+
+There's also a handy wrapper for this:
+
+```
+computations := func() { // Do the computations with any arguments you need }
+RunRoutine(computations)
 ```
 
 Contributors
