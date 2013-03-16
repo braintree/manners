@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	ShutdownChannel chan os.Signal
+	ShutdownChannel = make(chan os.Signal)
 	shutdownHandler func()
 	waitGroup       = sync.WaitGroup{}
 )
