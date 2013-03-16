@@ -3,7 +3,6 @@ package manners
 import (
 	"net"
 	"net/http"
-	"os"
 	"strings"
 	"syscall"
 	"testing"
@@ -22,7 +21,6 @@ func (this *handlerStub) ServeHTTP(response http.ResponseWriter, request *http.R
 // Test that the server finishes handling requests after being told to shut down.
 func TestGracefulness(t *testing.T) {
 	handler := &handlerStub{}
-	ShutdownChannel = make(chan os.Signal)
 	testChan = make(chan string)
 	go ListenAndServe(":7000", handler)
 	// Need to ensure that the server boots before sending the request
@@ -41,7 +39,6 @@ func TestGracefulness(t *testing.T) {
 /*// Test that the server does not accept a new request after being told to shut down.*/
 func TestShutdown(t *testing.T) {
 	handler := &handlerStub{}
-	ShutdownChannel = make(chan os.Signal)
 	testChan = make(chan string)
 	go ListenAndServe(":7100", handler)
 	ShutdownChannel <- syscall.SIGINT
@@ -57,7 +54,6 @@ func TestShutdown(t *testing.T) {
 // even if a request is currently being served.
 func TestShutdownWithInflightRequest(t *testing.T) {
 	handler := &handlerStub{}
-	ShutdownChannel = make(chan os.Signal)
 	go ListenAndServe(":7200", handler)
 	// Need to ensure that the server boots before sending the request
 	time.Sleep(3e9)
@@ -75,7 +71,6 @@ func TestShutdownWithInflightRequest(t *testing.T) {
 // Test that Listen works the same as ListenAndServe
 func Test_Listen_Gracefulness(t *testing.T) {
 	handler := &handlerStub{}
-	ShutdownChannel = make(chan os.Signal)
 	testChan = make(chan string)
 	oldListener, err := net.Listen("tcp", ":7300")
 	if err != nil {
