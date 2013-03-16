@@ -4,7 +4,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
 	"sync"
 )
 
@@ -54,7 +53,6 @@ func FinishRoutine() {
 }
 
 func WaitForShutdown() {
-	signal.Notify(ShutdownChannel)
 	<-ShutdownChannel
 	shutdownHandler()
 }
