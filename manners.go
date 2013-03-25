@@ -4,12 +4,11 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
 	"sync"
 )
 
 var (
-	ShutdownChannel chan os.Signal
+	ShutdownChannel = make(chan os.Signal)
 	shutdownHandler func()
 	waitGroup       = sync.WaitGroup{}
 )
@@ -54,7 +53,6 @@ func FinishRoutine() {
 }
 
 func WaitForShutdown() {
-	signal.Notify(ShutdownChannel)
 	<-ShutdownChannel
 	shutdownHandler()
 }
