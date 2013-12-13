@@ -8,7 +8,7 @@ Manners allows you to shut your Go webserver down gracefully, without dropping a
 func main() {
   handler = MyHTTPHandler()
   signal.Notify(manners.ShutdownChannel)
-  manners.ListenAndServe(handler, ":7000")
+  manners.ListenAndServe(":7000",handler)
 }
 ```
 
