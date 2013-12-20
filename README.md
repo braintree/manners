@@ -7,52 +7,22 @@ Manners allows you to shut your Go webserver down gracefully, without dropping a
 ```go
 func main() {
   handler := MyHTTPHandler()
-  signal.Notify(manners.ShutdownChannel)
-  manners.ListenAndServe(handler, ":7000")
+  server := manners.NewServer()
+  server.ListenAndServe(":7000", handler)
 }
 ```
 
-Advanced users have full access to Manners' internals, so they can construct custom handling procedures:
+Then, when you want to shut the server down:
 
 ```go
-func main() {
-  handler = MyHTTPHandler()
-  baseListener, err := net.Listen(":7000")
-  if err != nil {
-    panic(err)
-  }
-  listener := manners.NewListener(baseListener)
-
-  // Do all sorts of stuff with the listener
-
-  manners.Serve(listener, handler)
-}
+server.Shutdown <- true
 ```
 
-It's also easy to trigger the shutdown command programmically:
+(Note that this does not block until all the requests are finished. Rather, the call to server.ListenAndServe will stop blocking when all the requests are finished.)
 
-```go
-manners.ShutdownChannel <- syscall.SIGINT
-```
+Manners ensures that all requests are served by incrementing a WaitGroup when a request comes in and decrementing it when the request finishes.
 
-Manners ensures that all requests are served by incrementing a waitgroup when a request comes in and decrementing it when the request finishes.
-
-If your request handler spawns Goroutines that are not guaranteed to finish with the request, you can ensure they are also completed with the `StarRoutine` function:
-
-```go
-func (this *MyHTTPHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
-  DoAsynchronousComputations()
-  // Implicitly return 200
-}
-
-func DoAsynchronousComputations() {
-  manners.StartRoutine()
-  go func() {
-    defer manners.FinishRoutine()
-    // Do the computations
-  }()
-}
-```
+If your request handler spawns Goroutines that are not guaranteed to finish with the request, you can ensure they are also completed with the `StarRoutine` and `FinishRoutine` functions on the server.
 
 ### Installation
 
