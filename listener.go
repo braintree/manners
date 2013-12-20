@@ -1,13 +1,11 @@
 package manners
 
-import (
-  "net"
-)
+import "net"
 
 // A GracefulListener differs from a standard net.Listener in three ways:
 //    1. It increases the server's WaitGroup when it accepts a connection.
 //    2. It returns GracefulConnections rather than normal net.Conns.
-//    3. If Accept() is called after it is gracefully closed, it returns a 
+//    3. If Accept() is called after it is gracefully closed, it returns a
 //       listenerAlreadyClosed error. The GracefulServer will ignore this
 //       error.
 type GracefulListener struct {

@@ -7,15 +7,15 @@ import (
 )
 
 func NewServer() *GracefulServer {
-  return &GracefulServer{
-    shutdown: make(chan bool),
-  }
+	return &GracefulServer{
+		shutdown: make(chan bool),
+	}
 }
 
 type GracefulServer struct {
 	wg              sync.WaitGroup
 	shutdown        chan bool
-	shutdownHandler func() error
+	shutdownHandler func()
 }
 
 func (s *GracefulServer) ListenAndServe(addr string, handler http.Handler) error {
@@ -29,8 +29,8 @@ func (s *GracefulServer) ListenAndServe(addr string, handler http.Handler) error
 }
 
 func (s *GracefulServer) Serve(listener *GracefulListener, handler http.Handler) error {
-	s.shutdownHandler = func() error { return listener.Close() }
-  s.WaitForShutdown()
+	s.shutdownHandler = func() { listener.Close() }
+	s.listenForShutdown()
 	server := http.Server{Handler: handler}
 	err := server.Serve(listener)
 	if err == nil {
@@ -49,12 +49,9 @@ func (s *GracefulServer) FinishRoutine() {
 	s.wg.Done()
 }
 
-func (s *GracefulServer) WaitForShutdown() chan error {
-  errs := make(chan error)
-  go func() {
-    <-s.shutdown
-    err := s.shutdownHandler()
-    errs <-err
-  }()
-  return errs
+func (s *GracefulServer) listenForShutdown() {
+	go func() {
+		<-s.shutdown
+		s.shutdownHandler()
+	}()
 }
