@@ -6,18 +6,25 @@ import (
 	"sync"
 )
 
+// Creates a new GracefulServer. The server will begin shutting down when
+// a value is passed to the Shutdown channel.
 func NewServer() *GracefulServer {
 	return &GracefulServer{
-		shutdown: make(chan bool),
+		Shutdown: make(chan bool),
 	}
 }
 
+// A GracefulServer maintains a WaitGroup that counts how many in-flight
+// requests the server is handling. When it receives a shutdown signal,
+// it stops accepting new requests but does not actually shut down until
+// all in-flight requests terminate.
 type GracefulServer struct {
+	Shutdown        chan bool
 	wg              sync.WaitGroup
-	shutdown        chan bool
 	shutdownHandler func()
 }
 
+// A helper function that emulates the functionality of http.ListenAndServe.
 func (s *GracefulServer) ListenAndServe(addr string, handler http.Handler) error {
 	oldListener, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -28,7 +35,8 @@ func (s *GracefulServer) ListenAndServe(addr string, handler http.Handler) error
 	return err
 }
 
-func (s *GracefulServer) Serve(listener *GracefulListener, handler http.Handler) error {
+// Similar to http.Serve. The listener passed must wrap a GracefulListener.
+func (s *GracefulServer) Serve(listener net.Listener, handler http.Handler) error {
 	s.shutdownHandler = func() { listener.Close() }
 	s.listenForShutdown()
 	server := http.Server{Handler: handler}
@@ -41,17 +49,21 @@ func (s *GracefulServer) Serve(listener *GracefulListener, handler http.Handler)
 	return err
 }
 
+// Increments the server's WaitGroup. Use this if a web request starts more
+// goroutines and these goroutines are not guaranteed to finish before the
+// request.
 func (s *GracefulServer) StartRoutine() {
 	s.wg.Add(1)
 }
 
+// Decrement the server's WaitGroup. Used this to complement StartRoutine().
 func (s *GracefulServer) FinishRoutine() {
 	s.wg.Done()
 }
 
 func (s *GracefulServer) listenForShutdown() {
 	go func() {
-		<-s.shutdown
+		<-s.Shutdown
 		s.shutdownHandler()
 	}()
 }

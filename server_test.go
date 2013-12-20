@@ -30,7 +30,7 @@ func TestGracefulness(t *testing.T) {
 
 	// This will block until the server is inside the handler function.
 	<-ready
-	server.shutdown <- true
+	server.Shutdown <- true
 	select {
 	case <-time.After(1e9):
 		t.Fatal("Did not receive a value from done; the request did not complete.")
@@ -52,7 +52,7 @@ func TestShutdown(t *testing.T) {
 		}
 	}()
 
-	server.shutdown <- true
+	server.Shutdown <- true
 
 	_, err := http.Get("http://localhost:7100")
 	if err == nil {
