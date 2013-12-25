@@ -8,6 +8,10 @@ import "net"
 //    3. If Accept() is called after it is gracefully closed, it returns a
 //       listenerAlreadyClosed error. The GracefulServer will ignore this
 //       error.
+func NewListener(l net.Listener, s *GracefulServer) *GracefulListener {
+	return &GracefulListener{l, true, s}
+}
+
 type GracefulListener struct {
 	net.Listener
 	open   bool

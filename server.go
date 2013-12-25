@@ -30,7 +30,7 @@ func (s *GracefulServer) ListenAndServe(addr string, handler http.Handler) error
 	if err != nil {
 		return err
 	}
-	listener := &GracefulListener{oldListener, true, s}
+	listener := NewListener(oldListener, s)
 	err = s.Serve(listener, handler)
 	return err
 }
