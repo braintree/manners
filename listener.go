@@ -1,6 +1,9 @@
 package manners
 
-import "net"
+import (
+	"net"
+	"sync"
+)
 
 // A GracefulListener differs from a standard net.Listener in three ways:
 //    1. It increases the server's WaitGroup when it accepts a connection.
@@ -27,7 +30,7 @@ func (this *GracefulListener) Accept() (net.Conn, error) {
 		return nil, err
 	}
 	this.server.StartRoutine()
-	return GracefulConnection{conn, this.server}, nil
+	return GracefulConnection{conn, this.server, &sync.Once{}}, nil
 }
 
 func (this *GracefulListener) Close() error {
@@ -44,11 +47,12 @@ func (this *GracefulListener) Close() error {
 type GracefulConnection struct {
 	net.Conn
 	server *GracefulServer
+	once   *sync.Once
 }
 
 func (this GracefulConnection) Close() error {
 	err := this.Conn.Close()
-	this.server.FinishRoutine()
+	this.once.Do(this.server.FinishRoutine)
 	return err
 }
 
