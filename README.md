@@ -22,7 +22,7 @@ server.Shutdown <- true
 
 Manners ensures that all requests are served by incrementing a WaitGroup when a request comes in and decrementing it when the request finishes.
 
-If your request handler spawns Goroutines that are not guaranteed to finish with the request, you can ensure they are also completed with the `StarRoutine` and `FinishRoutine` functions on the server.
+If your request handler spawns Goroutines that are not guaranteed to finish with the request, you can ensure they are also completed with the `StartRoutine` and `FinishRoutine` functions on the server.
 
 ### Installation
 
