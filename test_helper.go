@@ -2,6 +2,7 @@ package manners
 
 import (
 	"net/http"
+	"time"
 )
 
 // A response handler that blocks until it receives a signal; simulates an
@@ -19,7 +20,8 @@ type blockingHandler struct {
 
 func (h *blockingHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 	h.ready <- true
-	<-h.done
+	time.Sleep(1e2)
+	h.done <- true
 }
 
 // A response handler that does nothing.

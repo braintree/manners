@@ -44,6 +44,7 @@ func (s *GracefulServer) Serve(listener net.Listener, handler http.Handler) erro
 	if err == nil {
 		return nil
 	} else if _, ok := err.(listenerAlreadyClosed); ok {
+		s.wg.Wait()
 		return nil
 	}
 	return err

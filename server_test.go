@@ -3,7 +3,6 @@ package manners
 import (
 	"net/http"
 	"testing"
-	"time"
 )
 
 // Tests that the server allows in-flight requests to complete before shutting
@@ -11,6 +10,9 @@ import (
 func TestGracefulness(t *testing.T) {
 	ready := make(chan bool)
 	done := make(chan bool)
+
+	exited := false
+
 	handler := newBlockingHandler(ready, done)
 	server := NewServer()
 
@@ -19,6 +21,8 @@ func TestGracefulness(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		}
+
+		exited = true
 	}()
 
 	go func() {
@@ -31,10 +35,11 @@ func TestGracefulness(t *testing.T) {
 	// This will block until the server is inside the handler function.
 	<-ready
 	server.Shutdown <- true
-	select {
-	case <-time.After(1e9):
-		t.Fatal("Did not receive a value from done; the request did not complete.")
-	case done <- true:
+	<-done
+
+	if exited {
+		t.Fatal("The request did not complete before server exited")
+	} else {
 		// The handler is being allowed to run to completion; test passes.
 	}
 }
