@@ -31,8 +31,3 @@ Manners 3.0.0 and above use standard library functionality introduced in Go 1.3.
 ### Installation
 
 `go get github.com/braintree/manners`
-
-### Contributors
-
-- [Lionel Barrow](http://github.com/lionelbarrow)
-- [Paul Rosenzweig](http://github.com/paulrosenzweig)
