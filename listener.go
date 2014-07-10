@@ -1,58 +1,38 @@
 package manners
 
-import (
-	"net"
-	"sync"
-)
+import "net"
 
-// A GracefulListener differs from a standard net.Listener in three ways:
-//    1. It increases the server's WaitGroup when it accepts a connection.
-//    2. It returns GracefulConnections rather than normal net.Conns.
-//    3. If Accept() is called after it is gracefully closed, it returns a
-//       listenerAlreadyClosed error. The GracefulServer will ignore this
-//       error.
 func NewListener(l net.Listener, s *GracefulServer) *GracefulListener {
 	return &GracefulListener{l, true, s}
 }
 
+// A GracefulListener differs from a standard net.Listener in one way: if
+// Accept() is called after it is gracefully closed, it returns a
+// listenerAlreadyClosed error. The GracefulServer will ignore this
+// error.
 type GracefulListener struct {
 	net.Listener
 	open   bool
 	server *GracefulServer
 }
 
-func (this *GracefulListener) Accept() (net.Conn, error) {
-	conn, err := this.Listener.Accept()
+func (l *GracefulListener) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
 	if err != nil {
-		if !this.open {
+		if !l.open {
 			err = listenerAlreadyClosed{err}
 		}
 		return nil, err
 	}
-	this.server.StartRoutine()
-	return GracefulConnection{conn, this.server, &sync.Once{}}, nil
+	return conn, nil
 }
 
-func (this *GracefulListener) Close() error {
-	if !this.open {
+func (l *GracefulListener) Close() error {
+	if !l.open {
 		return nil
 	}
-	this.open = false
-	err := this.Listener.Close()
-	return err
-}
-
-// GracefulConnections are identical to net.Conns except that they decrement
-// their parent servers' WaitGroup after closing.
-type GracefulConnection struct {
-	net.Conn
-	server *GracefulServer
-	once   *sync.Once
-}
-
-func (this GracefulConnection) Close() error {
-	err := this.Conn.Close()
-	this.once.Do(this.server.FinishRoutine)
+	l.open = false
+	err := l.Listener.Close()
 	return err
 }
 

@@ -30,6 +30,7 @@ func (s *GracefulServer) ListenAndServe(addr string, handler http.Handler) error
 	if err != nil {
 		return err
 	}
+
 	listener := NewListener(oldListener, s)
 	err = s.Serve(listener, handler)
 	return err
@@ -40,7 +41,17 @@ func (s *GracefulServer) Serve(listener net.Listener, handler http.Handler) erro
 	s.shutdownHandler = func() { listener.Close() }
 	s.listenForShutdown()
 	server := http.Server{Handler: handler}
+	server.ConnState = func(conn net.Conn, newState http.ConnState) {
+		switch newState {
+		case http.StateNew:
+			s.StartRoutine()
+		case http.StateClosed, http.StateHijacked:
+			s.FinishRoutine()
+		}
+	}
 	err := server.Serve(listener)
+
+	// This block is reached when the server has received a shut down command.
 	if err == nil {
 		return nil
 	} else if _, ok := err.(listenerAlreadyClosed); ok {
