@@ -26,7 +26,7 @@ If your request handler spawns Goroutines that are not guaranteed to finish with
 
 ### Compatability
 
-Manners 0.3.0 and above use standard library functionality introduced in Go 1.3.
+Manners 0.3.0 and above uses standard library functionality introduced in Go 1.3.
 
 ### Installation
 
