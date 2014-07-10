@@ -24,6 +24,10 @@ Manners ensures that all requests are served by incrementing a WaitGroup when a 
 
 If your request handler spawns Goroutines that are not guaranteed to finish with the request, you can ensure they are also completed with the `StartRoutine` and `FinishRoutine` functions on the server.
 
+### Compatability
+
+Manners 3.0.0 and above use standard library functionality introduced in Go 1.3.
+
 ### Installation
 
 `go get github.com/braintree/manners`
