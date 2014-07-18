@@ -61,7 +61,7 @@ func TestShutdown(t *testing.T) {
 
 	server.Shutdown <- true
 
-	<- exited
+	<-exited
 	_, err := http.Get("http://localhost:7100")
 	if err == nil {
 		t.Fatal("Did not receive an error when trying to connect to server.")
