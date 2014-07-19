@@ -34,18 +34,19 @@ func TestGracefulness(t *testing.T) {
 
 	// This will block until the server is inside the handler function.
 	<-ready
+
 	server.Shutdown <- true
+	<-done
 
 	if exited {
 		t.Fatal("The request did not complete before server exited")
 	} else {
 		// The handler is being allowed to run to completion; test passes.
 	}
-	<-done
 }
 
-// Tests that the server begins to shut down when it receives a SIGINT and
-// does not accept new requests
+// Tests that the server begins to shut down when told to and does not accept
+// new requests
 func TestShutdown(t *testing.T) {
 	handler := newTestHandler()
 	server := NewServer()
@@ -63,6 +64,7 @@ func TestShutdown(t *testing.T) {
 
 	<-exited
 	_, err := http.Get("http://localhost:7100")
+
 	if err == nil {
 		t.Fatal("Did not receive an error when trying to connect to server.")
 	}
