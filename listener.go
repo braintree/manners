@@ -1,9 +1,12 @@
 package manners
 
-import "net"
+import (
+	"net"
+	"sync"
+)
 
 func NewListener(l net.Listener, s *GracefulServer) *GracefulListener {
-	return &GracefulListener{l, true, s}
+	return &GracefulListener{l, true, s, sync.RWMutex{}}
 }
 
 // A GracefulListener differs from a standard net.Listener in one way: if
@@ -14,11 +17,14 @@ type GracefulListener struct {
 	net.Listener
 	open   bool
 	server *GracefulServer
+	rw     sync.RWMutex
 }
 
 func (l *GracefulListener) Accept() (net.Conn, error) {
 	conn, err := l.Listener.Accept()
 	if err != nil {
+		l.rw.RLock()
+		defer l.rw.RUnlock()
 		if !l.open {
 			err = listenerAlreadyClosed{err}
 		}
@@ -28,6 +34,8 @@ func (l *GracefulListener) Accept() (net.Conn, error) {
 }
 
 func (l *GracefulListener) Close() error {
+	l.rw.Lock()
+	defer l.rw.Unlock()
 	if !l.open {
 		return nil
 	}

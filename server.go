@@ -53,6 +53,7 @@ func (s *GracefulServer) Serve(listener net.Listener, handler http.Handler) erro
 
 	// This block is reached when the server has received a shut down command.
 	if err == nil {
+		s.wg.Wait()
 		return nil
 	} else if _, ok := err.(listenerAlreadyClosed); ok {
 		s.wg.Wait()
