@@ -22,6 +22,7 @@ type GracefulServer struct {
 	Shutdown        chan bool
 	wg              sync.WaitGroup
 	shutdownHandler func()
+	InnerServer     http.Server
 }
 
 // A helper function that emulates the functionality of http.ListenAndServe.
@@ -40,8 +41,8 @@ func (s *GracefulServer) ListenAndServe(addr string, handler http.Handler) error
 func (s *GracefulServer) Serve(listener net.Listener, handler http.Handler) error {
 	s.shutdownHandler = func() { listener.Close() }
 	s.listenForShutdown()
-	server := http.Server{Handler: handler}
-	server.ConnState = func(conn net.Conn, newState http.ConnState) {
+	s.InnerServer.Handler = handler
+	s.InnerServer.ConnState = func(conn net.Conn, newState http.ConnState) {
 		switch newState {
 		case http.StateNew:
 			s.StartRoutine()
@@ -49,7 +50,7 @@ func (s *GracefulServer) Serve(listener net.Listener, handler http.Handler) erro
 			s.FinishRoutine()
 		}
 	}
-	err := server.Serve(listener)
+	err := s.InnerServer.Serve(listener)
 
 	// This block is reached when the server has received a shut down command.
 	if err == nil {
