@@ -2,11 +2,17 @@ package manners
 
 import (
 	"net"
-	"sync"
+	"net/http"
+	"sync/atomic"
 )
 
 func NewListener(l net.Listener, s *GracefulServer) *GracefulListener {
-	return &GracefulListener{l, true, s, sync.RWMutex{}}
+	return &GracefulListener{l, 1}
+}
+
+type GracefulConn struct {
+	net.Conn
+	lastHttpState http.ConnState
 }
 
 // A GracefulListener differs from a standard net.Listener in one way: if
@@ -15,33 +21,27 @@ func NewListener(l net.Listener, s *GracefulServer) *GracefulListener {
 // error.
 type GracefulListener struct {
 	net.Listener
-	open   bool
-	server *GracefulServer
-	rw     sync.RWMutex
+	open int32
 }
 
 func (l *GracefulListener) Accept() (net.Conn, error) {
 	conn, err := l.Listener.Accept()
 	if err != nil {
-		l.rw.RLock()
-		defer l.rw.RUnlock()
-		if !l.open {
+		if atomic.LoadInt32(&l.open) == 0 {
 			err = listenerAlreadyClosed{err}
 		}
 		return nil, err
 	}
-	return conn, nil
+	gconn := &GracefulConn{conn, 0}
+	return gconn, nil
 }
 
 func (l *GracefulListener) Close() error {
-	l.rw.Lock()
-	defer l.rw.Unlock()
-	if !l.open {
-		return nil
+	if atomic.CompareAndSwapInt32(&l.open, 1, 0) {
+		err := l.Listener.Close()
+		return err
 	}
-	l.open = false
-	err := l.Listener.Close()
-	return err
+	return nil
 }
 
 type listenerAlreadyClosed struct {
