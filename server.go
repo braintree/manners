@@ -4,13 +4,23 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"sync/atomic"
 )
+
+// interface describing a waitgroup, so unit
+// tests can mock out an instrumentable version
+type waitgroup interface {
+	Add(delta int)
+	Done()
+	Wait()
+}
 
 // Creates a new GracefulServer. The server will begin shutting down when
 // a value is passed to the Shutdown channel.
 func NewServer() *GracefulServer {
 	return &GracefulServer{
 		Shutdown: make(chan bool),
+		wg:       new(sync.WaitGroup),
 	}
 }
 
@@ -20,8 +30,12 @@ func NewServer() *GracefulServer {
 // all in-flight requests terminate.
 type GracefulServer struct {
 	Shutdown        chan bool
-	wg              sync.WaitGroup
+	wg              waitgroup
 	shutdownHandler func()
+
+	// used by test code
+	server *http.Server
+	up     chan chan bool
 }
 
 // A helper function that emulates the functionality of http.ListenAndServe.
@@ -31,23 +45,61 @@ func (s *GracefulServer) ListenAndServe(addr string, handler http.Handler) error
 		return err
 	}
 
-	listener := NewListener(oldListener, s)
+	listener := NewListener(oldListener)
 	err = s.Serve(listener, handler)
 	return err
 }
 
 // Similar to http.Serve. The listener passed must wrap a GracefulListener.
 func (s *GracefulServer) Serve(listener net.Listener, handler http.Handler) error {
-	s.shutdownHandler = func() { listener.Close() }
-	s.listenForShutdown()
+	var closing int32
 	server := http.Server{Handler: handler}
+	s.server = &server
+	s.shutdownHandler = func() {
+		atomic.StoreInt32(&closing, 1)
+		listener.Close()
+		server.SetKeepAlivesEnabled(false)
+	}
+	s.listenForShutdown()
+
 	server.ConnState = func(conn net.Conn, newState http.ConnState) {
+		gconn := conn.(*gracefulConn)
 		switch newState {
 		case http.StateNew:
+			// new_conn -> StateNew
 			s.StartRoutine()
-		case http.StateClosed, http.StateHijacked:
+
+		case http.StateActive:
+			// (StateNew, StateIdle) -> StateActive
+			if gconn.lastHTTPState == http.StateIdle {
+				// transitioned from idle back to active
+				s.StartRoutine()
+			}
+
+		case http.StateIdle:
+			// StateActive -> StateIdle
+			if atomic.LoadInt32(&closing) == 1 {
+				// rapidly close newly idle connections; if not they may make
+				// one more request before SetKeepAliveEnabled(false)  takes effect.
+				conn.Close()
+			}
 			s.FinishRoutine()
+
+		case http.StateClosed, http.StateHijacked:
+			// (StateNew, StateActive, StateIdle) -> (StateClosed, StateHiJacked)
+			if gconn.lastHTTPState != http.StateIdle {
+				// if it was idle it's already been decremented
+				s.FinishRoutine()
+			}
 		}
+		gconn.lastHTTPState = newState
+	}
+	// only used by unit tests
+	if s.up != nil {
+		// notify test that server is up; wait for signal to continue
+		c := make(chan bool)
+		s.up <- c
+		<-c
 	}
 	err := server.Serve(listener)
 
