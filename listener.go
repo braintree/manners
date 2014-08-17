@@ -6,13 +6,21 @@ import (
 	"sync/atomic"
 )
 
-func NewListener(l net.Listener, s *GracefulServer) *GracefulListener {
+// NewListener wraps an existing listener for use with
+// GracefulServer.
+//
+// Note that you generally don't need to use this directly as
+// GracefulServer will automatically wrap any non-graceful listeners
+// supplied to it.
+func NewListener(l net.Listener) *GracefulListener {
 	return &GracefulListener{l, 1}
 }
 
-type GracefulConn struct {
+// A gracefulCon wraps a normal net.Conn and tracks the
+// last known http state.
+type gracefulConn struct {
 	net.Conn
-	lastHttpState http.ConnState
+	lastHTTPState http.ConnState
 }
 
 // A GracefulListener differs from a standard net.Listener in one way: if
@@ -24,6 +32,7 @@ type GracefulListener struct {
 	open int32
 }
 
+// Accept implements the Accept method in the Listener interface.
 func (l *GracefulListener) Accept() (net.Conn, error) {
 	conn, err := l.Listener.Accept()
 	if err != nil {
@@ -32,10 +41,12 @@ func (l *GracefulListener) Accept() (net.Conn, error) {
 		}
 		return nil, err
 	}
-	gconn := &GracefulConn{conn, 0}
+
+	gconn := &gracefulConn{conn, 0}
 	return gconn, nil
 }
 
+// Close tells the wrapped listener to stop listening.  It is idempotent.
 func (l *GracefulListener) Close() error {
 	if atomic.CompareAndSwapInt32(&l.open, 1, 0) {
 		err := l.Listener.Close()

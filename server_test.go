@@ -2,15 +2,24 @@ package manners
 
 import (
 	"bufio"
+	"crypto/tls"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 )
+
+type httpInterface interface {
+	ListenAndServe() error
+	ListenAndServeTLS(certFile, keyFile string) error
+	Serve(listener net.Listener) error
+}
 
 // an inefficient replica of a waitgroup that can be introspected
 type testWg struct {
@@ -45,20 +54,32 @@ func (wg *testWg) Wait() {
 
 // a simple step-controllable http client
 type client struct {
+	tls         bool
+	addr        net.Addr
 	connected   chan error
 	sendrequest chan bool
-	idle        chan bool
+	idle        chan error
 	idlerelease chan bool
 	closed      chan bool
 }
 
 func (c *client) Run() {
 	go func() {
-		conn, err := net.Dial("tcp", "localhost:7000")
-		c.connected <- err
+		var err error
+		conn, err := net.Dial(c.addr.Network(), c.addr.String())
+		if err != nil {
+			c.connected <- err
+			return
+		}
+		if c.tls {
+			conn = tls.Client(conn, &tls.Config{InsecureSkipVerify: true})
+		}
+		c.connected <- nil
 		for <-c.sendrequest {
-			defer conn.Close()
-			conn.Write([]byte("GET / HTTP/1.1\nHost: localhost:8000\n\n"))
+			_, err = conn.Write([]byte("GET / HTTP/1.1\nHost: localhost:8000\n\n"))
+			if err != nil {
+				c.idle <- err
+			}
 			// Read response; no content
 			scanner := bufio.NewScanner(conn)
 			for scanner.Scan() {
@@ -68,7 +89,7 @@ func (c *client) Run() {
 					break
 				}
 			}
-			c.idle <- true
+			c.idle <- scanner.Err()
 			<-c.idlerelease
 		}
 		conn.Close()
@@ -77,11 +98,13 @@ func (c *client) Run() {
 	}()
 }
 
-func newClient() *client {
+func newClient(addr net.Addr, tls bool) *client {
 	return &client{
+		addr:        addr,
+		tls:         tls,
 		connected:   make(chan error),
 		sendrequest: make(chan bool),
-		idle:        make(chan bool),
+		idle:        make(chan error),
 		idlerelease: make(chan bool),
 		closed:      make(chan bool),
 	}
@@ -90,12 +113,24 @@ func newClient() *client {
 // a handler that returns 200 ok with no body
 var nullHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
 
-func startServer(t *testing.T, server *GracefulServer, statechanged chan http.ConnState) chan error {
-	server.up = make(chan chan bool)
+func startGenericServer(t *testing.T, server *GracefulServer, statechanged chan http.ConnState, runner func() error) (l net.Listener, errc chan error) {
+	server.Addr = "localhost:0"
+	server.Handler = nullHandler
+	if statechanged != nil {
+		// Wrap the ConnState handler with something that will notify
+		// the statechanged channel when a state change happens
+		server.ConnState = func(conn net.Conn, newState http.ConnState) {
+			s := conn.(*gracefulConn).lastHTTPState
+			statechanged <- s
+		}
+	}
+
+	//server.up = make(chan chan bool))
+	server.up = make(chan net.Listener)
 	exitchan := make(chan error)
 
 	go func() {
-		err := server.ListenAndServe("localhost:7000", nullHandler)
+		err := runner()
 		if err != nil {
 			exitchan <- err
 		} else {
@@ -105,25 +140,44 @@ func startServer(t *testing.T, server *GracefulServer, statechanged chan http.Co
 
 	// wait for server socket to be bound
 	select {
-	case c := <-server.up:
+	case l = <-server.up:
 		// all good
-		if statechanged != nil {
-			// Wrap the ConnState handler with something that will notify
-			// the statechanged channel when a state change happens
-			cs := server.server.ConnState
-			server.server.ConnState = func(conn net.Conn, newState http.ConnState) {
-				cs(conn, newState)
-				s := conn.(*GracefulConn).lastHttpState
-				statechanged <- s
-			}
-		}
-		c <- true
 
 	case err := <-exitchan:
 		// all bad
 		t.Fatal("Server failed to start", err)
 	}
-	return exitchan
+	return l, exitchan
+}
+
+func startServer(t *testing.T, server *GracefulServer, statechanged chan http.ConnState) (l net.Listener, errc chan error) {
+	runner := func() error {
+		return server.ListenAndServe()
+	}
+
+	return startGenericServer(t, server, statechanged, runner)
+}
+
+func startTLSServer(t *testing.T, server *GracefulServer, certFile, keyFile string, statechanged chan http.ConnState) (l net.Listener, errc chan error) {
+	runner := func() error {
+		return server.ListenAndServeTLS(certFile, keyFile)
+	}
+
+	return startGenericServer(t, server, statechanged, runner)
+}
+
+// Test that the method signatures of the methods we override from net/http/Server
+// match those of the original.
+func TestInterface(t *testing.T) {
+	var original, ours interface{}
+	original = &http.Server{}
+	ours = &GracefulServer{}
+	if _, ok := original.(httpInterface); !ok {
+		t.Errorf("httpInterface definition does not match the canonical server!")
+	}
+	if _, ok := ours.(httpInterface); !ok {
+		t.Errorf("GracefulServer does not implement httpInterface")
+	}
 }
 
 // Tests that the server allows in-flight requests to complete
@@ -132,9 +186,9 @@ func TestGracefulness(t *testing.T) {
 	server := NewServer()
 	wg := newTestWg()
 	server.wg = wg
-	exitchan := startServer(t, server, nil)
+	listener, exitchan := startServer(t, server, nil)
 
-	client := newClient()
+	client := newClient(listener.Addr(), false)
 	client.Run()
 
 	// wait for client to connect, but don't let it send the request yet
@@ -142,7 +196,7 @@ func TestGracefulness(t *testing.T) {
 		t.Fatal("Client failed to connect to server", err)
 	}
 
-	server.Shutdown <- true
+	server.Close()
 
 	waiting := <-wg.waitCalled
 	if waiting < 1 {
@@ -190,18 +244,96 @@ func TestStateTransitions(t *testing.T) {
 		server.wg = wg
 		startServer(t, server, nil)
 
-		conn := &GracefulConn{nil, 0}
+		conn := &gracefulConn{nil, 0}
 		for _, newState := range test.states {
-			server.server.ConnState(conn, newState)
+			server.ConnState(conn, newState)
 		}
 
-		server.Shutdown <- true
+		server.Close()
 		waiting := <-wg.waitCalled
 		if waiting != test.finalWgCount {
 			t.Errorf("%s - Waitcount should be %d, got %d", fmtstates(test.states), test.finalWgCount, waiting)
 		}
 
 	}
+}
+
+type fakeConn struct {
+	net.Conn
+	closeCalled bool
+}
+
+func (c *fakeConn) Close() error {
+	c.closeCalled = true
+	return nil
+}
+
+type fakeListener struct {
+	acceptRelease chan bool
+	closeCalled   chan bool
+}
+
+func newFakeListener() *fakeListener { return &fakeListener{make(chan bool, 1), make(chan bool, 1)} }
+
+func (l *fakeListener) Addr() net.Addr {
+	addr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:8080")
+	return addr
+}
+
+func (l *fakeListener) Close() error {
+	l.closeCalled <- true
+	l.acceptRelease <- true
+	return nil
+}
+
+func (l *fakeListener) Accept() (net.Conn, error) {
+	<-l.acceptRelease
+	return nil, errors.New("connection closed")
+}
+
+// Test that a connection is closed upon reaching an idle state iff the server
+// is shutting down.
+func TestCloseOnIdle(t *testing.T) {
+	server := NewServer()
+	wg := newTestWg()
+	server.wg = wg
+	fl := newFakeListener()
+	runner := func() error {
+		return server.Serve(fl)
+	}
+
+	startGenericServer(t, server, nil, runner)
+
+	fconn := &fakeConn{}
+	conn := &gracefulConn{fconn, http.StateActive}
+
+	// Change to idle state while server is not closing; Close should not be called
+	server.ConnState(conn, http.StateIdle)
+	if conn.lastHTTPState != http.StateIdle {
+		t.Errorf("State was not changed to idle")
+	}
+	if fconn.closeCalled {
+		t.Error("Close was called unexpected")
+	}
+
+	// push back to active state
+	conn.lastHTTPState = http.StateActive
+	server.Close()
+	// race?
+
+	// wait until the server calls Close() on the listener
+	// by that point the atomic closing variable will have been updated, avoiding a race.
+	<-fl.closeCalled
+
+	server.ConnState(conn, http.StateIdle)
+	if conn.lastHTTPState != http.StateIdle {
+		t.Error("State was not changed to idle")
+	}
+	if !fconn.closeCalled {
+		t.Error("Close was not called")
+	}
+
+	fl.acceptRelease <- true
 }
 
 func waitForState(t *testing.T, waiter chan http.ConnState, state http.ConnState, errmsg string) {
@@ -219,14 +351,14 @@ func waitForState(t *testing.T, waiter chan http.ConnState, state http.ConnState
 
 // Test that a request moving from active->idle->active using an actual
 // network connection still results in a corect shutdown
-func TestStateTransitioActiveIdleActiven(t *testing.T) {
+func TestStateTransitionActiveIdleActive(t *testing.T) {
 	server := NewServer()
 	wg := newTestWg()
 	statechanged := make(chan http.ConnState)
 	server.wg = wg
-	exitchan := startServer(t, server, statechanged)
+	listener, exitchan := startServer(t, server, statechanged)
 
-	client := newClient()
+	client := newClient(listener.Addr(), false)
 	client.Run()
 
 	// wait for client to connect, but don't let it send the request
@@ -244,7 +376,7 @@ func TestStateTransitioActiveIdleActiven(t *testing.T) {
 
 	// client is now in an idle state
 
-	server.Shutdown <- true
+	server.Close()
 	waiting := <-wg.waitCalled
 	if waiting != 0 {
 		t.Errorf("Waitcount should be zero, got %d", waiting)
@@ -258,52 +390,121 @@ func TestStateTransitioActiveIdleActiven(t *testing.T) {
 // Test state transitions from new->active->-idle->closed using an actual
 // network connection and make sure the waitgroup count is correct at the end.
 func TestStateTransitionActiveIdleClosed(t *testing.T) {
-	server := NewServer()
-	wg := newTestWg()
-	statechanged := make(chan http.ConnState)
-	server.wg = wg
-	exitchan := startServer(t, server, statechanged)
+	var (
+		listener net.Listener
+		exitchan chan error
+	)
 
-	client := newClient()
-	client.Run()
+	keyFile, err1 := NewTempFile(localhostKey)
+	certFile, err2 := NewTempFile(localhostCert)
+	defer keyFile.Unlink()
+	defer certFile.Unlink()
 
-	// wait for client to connect, but don't let it send the request
-	if err := <-client.connected; err != nil {
-		t.Fatal("Client failed to connect to server", err)
+	if err1 != nil || err2 != nil {
+		t.Fatal("Failed to create temporary files", err1, err2)
 	}
 
-	client.sendrequest <- true
-	waitForState(t, statechanged, http.StateActive, "Client failed to reach active state")
+	for _, withTLS := range []bool{false, true} {
+		server := NewServer()
+		wg := newTestWg()
+		statechanged := make(chan http.ConnState)
+		server.wg = wg
+		if withTLS {
+			listener, exitchan = startTLSServer(t, server, certFile.Name(), keyFile.Name(), statechanged)
+		} else {
+			listener, exitchan = startServer(t, server, statechanged)
+		}
 
-	<-client.idle
-	client.idlerelease <- true
-	waitForState(t, statechanged, http.StateIdle, "Client failed to reach idle state")
+		client := newClient(listener.Addr(), withTLS)
+		client.Run()
 
-	// client is now in an idle state
-	close(client.sendrequest)
-	<-client.closed
-	waitForState(t, statechanged, http.StateClosed, "Client failed to reach closed state")
+		// wait for client to connect, but don't let it send the request
+		if err := <-client.connected; err != nil {
+			t.Fatal("Client failed to connect to server", err)
+		}
 
-	server.Shutdown <- true
-	waiting := <-wg.waitCalled
-	if waiting != 0 {
-		t.Errorf("Waitcount should be zero, got %d", waiting)
+		client.sendrequest <- true
+		waitForState(t, statechanged, http.StateActive, "Client failed to reach active state")
+
+		err := <-client.idle
+		if err != nil {
+			t.Fatalf("tls=%t unexpected error from client %s", withTLS, err)
+		}
+
+		client.idlerelease <- true
+		waitForState(t, statechanged, http.StateIdle, "Client failed to reach idle state")
+
+		// client is now in an idle state
+		close(client.sendrequest)
+		<-client.closed
+		waitForState(t, statechanged, http.StateClosed, "Client failed to reach closed state")
+
+		server.Close()
+		waiting := <-wg.waitCalled
+		if waiting != 0 {
+			t.Errorf("Waitcount should be zero, got %d", waiting)
+		}
+
+		if err := <-exitchan; err != nil {
+			t.Error("Unexpected error during shutdown", err)
+		}
+	}
+}
+
+// Test that supplying a non GracefulListener to Serve works
+// correctly (ie. that the listener is wrapped to become graceful)
+func TestWrapConnection(t *testing.T) {
+	l, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatal("Failed to create listener", err)
 	}
 
-	if err := <-exitchan; err != nil {
-		t.Error("Unexpected error during shutdown", err)
+	s := NewServer()
+	s.up = make(chan net.Listener)
+
+	var called bool
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		s.Close() // clean shutdown as soon as handler exits
+	})
+	s.Handler = handler
+
+	serverr := make(chan error)
+
+	go func() {
+		serverr <- s.Serve(l)
+	}()
+
+	gl := <-s.up
+	if _, ok := gl.(*GracefulListener); !ok {
+		t.Fatal("connection was not wrapped into a GracefulListener")
 	}
+
+	addr := l.Addr()
+	if _, err := http.Get("http://" + addr.String()); err != nil {
+		t.Fatal("Get failed", err)
+	}
+
+	if err := <-serverr; err != nil {
+		t.Fatal("Error from Serve()", err)
+	}
+
+	if !called {
+		t.Error("Handler was not called")
+	}
+
 }
 
 // Tests that the server begins to shut down when told to and does not accept
 // new requests once shutdown has begun
 func TestShutdown(t *testing.T) {
+
 	server := NewServer()
 	wg := newTestWg()
 	server.wg = wg
-	exitchan := startServer(t, server, nil)
+	listener, exitchan := startServer(t, server, nil)
 
-	client1 := newClient()
+	client1 := newClient(listener.Addr(), false)
 	client1.Run()
 
 	// wait for client1 to connect
@@ -313,7 +514,7 @@ func TestShutdown(t *testing.T) {
 
 	// start the shutdown; once it hits waitgroup.Wait()
 	// the listener should of been closed, though client1 is still connected
-	server.Shutdown <- true
+	server.Close()
 
 	waiting := <-wg.waitCalled
 	if waiting != 1 {
@@ -321,7 +522,7 @@ func TestShutdown(t *testing.T) {
 	}
 
 	// should get connection refused at this point
-	client2 := newClient()
+	client2 := newClient(listener.Addr(), false)
 	client2.Run()
 
 	if err := <-client2.connected; err == nil {
@@ -333,3 +534,113 @@ func TestShutdown(t *testing.T) {
 
 	<-exitchan
 }
+
+// Use the top level functions to instantiate servers and make sure
+// they all shutdown when Close() is called
+func TestGlobalShutdown(t *testing.T) {
+	laserr := make(chan error)
+	lastlserr := make(chan error)
+	serveerr := make(chan error)
+
+	go func() {
+		laserr <- ListenAndServe("127.0.0.1:0", nullHandler)
+	}()
+
+	go func() {
+		keyFile, _ := NewTempFile(localhostKey)
+		certFile, _ := NewTempFile(localhostCert)
+		defer keyFile.Unlink()
+		defer certFile.Unlink()
+		lastlserr <- ListenAndServeTLS("127.0.0.1:0", certFile.Name(), keyFile.Name(), nullHandler)
+	}()
+
+	go func() {
+		l := newFakeListener()
+		serveerr <- Serve(l, nullHandler)
+	}()
+
+	// wait for registration
+	expected := 3
+	var sl int
+	for sl < expected {
+		m.Lock()
+		sl = len(servers)
+		m.Unlock()
+		time.Sleep(time.Millisecond)
+	}
+
+	Close()
+
+	for i := 0; i < expected; i++ {
+		select {
+		case err := <-laserr:
+			if err != nil {
+				t.Error("ListenAndServe returned error", err)
+			}
+			laserr = nil
+
+		case err := <-lastlserr:
+			if err != nil {
+				t.Error("ListenAndServeTLS returned error", err)
+			}
+			lastlserr = nil
+
+		case err := <-serveerr:
+			if err != nil {
+				t.Error("Serve returned error", err)
+			}
+			serveerr = nil
+		case <-time.After(time.Second):
+			t.Fatal("Timed out waiting for servers to exit")
+		}
+	}
+
+}
+
+type tempFile struct {
+	*os.File
+}
+
+func NewTempFile(content []byte) (*tempFile, error) {
+	f, err := ioutil.TempFile("", "graceful-test")
+	if err != nil {
+		return nil, err
+	}
+
+	f.Write(content)
+	return &tempFile{f}, nil
+}
+
+func (tf *tempFile) Unlink() {
+	if tf.File != nil {
+		os.Remove(tf.Name())
+		tf.File = nil
+	}
+}
+
+// localhostCert is a PEM-encoded TLS cert with SAN IPs
+// "127.0.0.1" and "[::1]", expiring at the last second of 2049 (the end
+// of ASN.1 time).
+// generated from src/pkg/crypto/tls:
+// go run generate_cert.go  --rsa-bits 512 --host 127.0.0.1,::1,example.com --ca --start-date "Jan 1 00:00:00 1970" --duration=1000000h
+var localhostCert = []byte(`-----BEGIN CERTIFICATE-----
+MIIBdzCCASOgAwIBAgIBADALBgkqhkiG9w0BAQUwEjEQMA4GA1UEChMHQWNtZSBD
+bzAeFw03MDAxMDEwMDAwMDBaFw00OTEyMzEyMzU5NTlaMBIxEDAOBgNVBAoTB0Fj
+bWUgQ28wWjALBgkqhkiG9w0BAQEDSwAwSAJBAN55NcYKZeInyTuhcCwFMhDHCmwa
+IUSdtXdcbItRB/yfXGBhiex00IaLXQnSU+QZPRZWYqeTEbFSgihqi1PUDy8CAwEA
+AaNoMGYwDgYDVR0PAQH/BAQDAgCkMBMGA1UdJQQMMAoGCCsGAQUFBwMBMA8GA1Ud
+EwEB/wQFMAMBAf8wLgYDVR0RBCcwJYILZXhhbXBsZS5jb22HBH8AAAGHEAAAAAAA
+AAAAAAAAAAAAAAEwCwYJKoZIhvcNAQEFA0EAAoQn/ytgqpiLcZu9XKbCJsJcvkgk
+Se6AbGXgSlq+ZCEVo0qIwSgeBqmsJxUu7NCSOwVJLYNEBO2DtIxoYVk+MA==
+-----END CERTIFICATE-----`)
+
+// localhostKey is the private key for localhostCert.
+var localhostKey = []byte(`-----BEGIN RSA PRIVATE KEY-----
+MIIBPAIBAAJBAN55NcYKZeInyTuhcCwFMhDHCmwaIUSdtXdcbItRB/yfXGBhiex0
+0IaLXQnSU+QZPRZWYqeTEbFSgihqi1PUDy8CAwEAAQJBAQdUx66rfh8sYsgfdcvV
+NoafYpnEcB5s4m/vSVe6SU7dCK6eYec9f9wpT353ljhDUHq3EbmE4foNzJngh35d
+AekCIQDhRQG5Li0Wj8TM4obOnnXUXf1jRv0UkzE9AHWLG5q3AwIhAPzSjpYUDjVW
+MCUXgckTpKCuGwbJk7424Nb8bLzf3kllAiA5mUBgjfr/WtFSJdWcPQ4Zt9KTMNKD
+EUO0ukpTwEIl6wIhAMbGqZK3zAAFdq8DD2jPx+UJXnh0rnOkZBzDtJ6/iN69AiEA
+1Aq8MJgTaYsDQWyU/hDq5YkDJc9e9DSCvUIzqxQWMQE=
+-----END RSA PRIVATE KEY-----`)
