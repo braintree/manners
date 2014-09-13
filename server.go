@@ -16,7 +16,8 @@ eg.
 	log.Fatal(manners.ListenAndServe(":8080", nil))
 
 or for a customized server:
-	s := manners.NewWithServer(&http.Server{
+
+  s := manners.NewWithServer(&http.Server{
 		Addr:           ":8080",
 		Handler:        myHandler,
 		ReadTimeout:    10 * time.Second,
