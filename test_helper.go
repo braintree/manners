@@ -15,12 +15,6 @@ func newServer() *GracefulServer {
 	return NewWithServer(new(http.Server))
 }
 
-type httpInterface interface {
-	ListenAndServe() error
-	ListenAndServeTLS(certFile, keyFile string) error
-	Serve(listener net.Listener) error
-}
-
 // a simple step-controllable http client
 type client struct {
 	tls         bool
