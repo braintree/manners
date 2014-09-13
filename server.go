@@ -45,34 +45,8 @@ import (
 	"crypto/tls"
 	"net"
 	"net/http"
-	"sync"
 	"sync/atomic"
-	"time"
 )
-
-// interface describing a waitgroup, so unit
-// tests can mock out an instrumentable version
-type waitgroup interface {
-	Add(delta int)
-	Done()
-	Wait()
-}
-
-// NewServer creates a new GracefulServer. The server will begin shutting down when
-// a value is passed to the Shutdown channel.
-func NewServer() *GracefulServer {
-	return NewWithServer(new(http.Server))
-}
-
-// NewWithServer wraps an existing http.Server object and returns a GracefulServer
-// that supports all of the original Server operations.
-func NewWithServer(s *http.Server) *GracefulServer {
-	return &GracefulServer{
-		Server:   s,
-		shutdown: make(chan struct{}),
-		wg:       new(sync.WaitGroup),
-	}
-}
 
 // A GracefulServer maintains a WaitGroup that counts how many in-flight
 // requests the server is handling. When it receives a shutdown signal,
@@ -228,66 +202,4 @@ func (s *GracefulServer) StartRoutine() {
 // FinishRoutine decrements the server's WaitGroup. Used this to complement StartRoutine().
 func (s *GracefulServer) FinishRoutine() {
 	s.wg.Done()
-}
-
-var (
-	servers []*GracefulServer
-	m       sync.Mutex
-)
-
-// ListenAndServe provides a graceful version of function provided by the net/http package.
-func ListenAndServe(addr string, handler http.Handler) error {
-	server := NewWithServer(&http.Server{Addr: addr, Handler: handler})
-	m.Lock()
-	servers = append(servers, server)
-	m.Unlock()
-	return server.ListenAndServe()
-}
-
-// ListenAndServeTLS provides a graceful version of function provided by the net/http package.
-func ListenAndServeTLS(addr string, certFile string, keyFile string, handler http.Handler) error {
-	server := NewWithServer(&http.Server{Addr: addr, Handler: handler})
-	m.Lock()
-	servers = append(servers, server)
-	m.Unlock()
-	return server.ListenAndServeTLS(certFile, keyFile)
-}
-
-// Serve provides a graceful version of function provided by the net/http package.
-func Serve(l net.Listener, handler http.Handler) error {
-	server := NewWithServer(&http.Server{Handler: handler})
-	m.Lock()
-	servers = append(servers, server)
-	m.Unlock()
-	return server.Serve(l)
-}
-
-// Close triggers a shutdown of all running Graceful servers.
-func Close() {
-	m.Lock()
-	for _, s := range servers {
-		s.Close()
-	}
-	servers = nil
-	m.Unlock()
-}
-
-// tcpKeepAliveListener sets TCP keep-alive timeouts on accepted
-// connections. It's used by ListenAndServe and ListenAndServeTLS so
-// dead TCP connections (e.g. closing laptop mid-download) eventually
-// go away.
-//
-// direct lift from net/http/server.go
-type tcpKeepAliveListener struct {
-	*net.TCPListener
-}
-
-func (ln tcpKeepAliveListener) Accept() (c net.Conn, err error) {
-	tc, err := ln.AcceptTCP()
-	if err != nil {
-		return
-	}
-	tc.SetKeepAlive(true)
-	tc.SetKeepAlivePeriod(3 * time.Minute)
-	return tc, nil
 }

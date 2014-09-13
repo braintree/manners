@@ -183,7 +183,7 @@ func TestInterface(t *testing.T) {
 // Tests that the server allows in-flight requests to complete
 // before shutting down.
 func TestGracefulness(t *testing.T) {
-	server := NewServer()
+	server := newServer()
 	wg := newTestWg()
 	server.wg = wg
 	listener, exitchan := startServer(t, server, nil)
@@ -239,7 +239,7 @@ func fmtstates(states []http.ConnState) string {
 func TestStateTransitions(t *testing.T) {
 	for _, test := range stateTests {
 		fmt.Println("Starting test ", fmtstates(test.states))
-		server := NewServer()
+		server := newServer()
 		wg := newTestWg()
 		server.wg = wg
 		startServer(t, server, nil)
@@ -294,7 +294,7 @@ func (l *fakeListener) Accept() (net.Conn, error) {
 // Test that a connection is closed upon reaching an idle state iff the server
 // is shutting down.
 func TestCloseOnIdle(t *testing.T) {
-	server := NewServer()
+	server := newServer()
 	wg := newTestWg()
 	server.wg = wg
 	fl := newFakeListener()
@@ -352,7 +352,7 @@ func waitForState(t *testing.T, waiter chan http.ConnState, state http.ConnState
 // Test that a request moving from active->idle->active using an actual
 // network connection still results in a corect shutdown
 func TestStateTransitionActiveIdleActive(t *testing.T) {
-	server := NewServer()
+	server := newServer()
 	wg := newTestWg()
 	statechanged := make(chan http.ConnState)
 	server.wg = wg
@@ -405,7 +405,7 @@ func TestStateTransitionActiveIdleClosed(t *testing.T) {
 	}
 
 	for _, withTLS := range []bool{false, true} {
-		server := NewServer()
+		server := newServer()
 		wg := newTestWg()
 		statechanged := make(chan http.ConnState)
 		server.wg = wg
@@ -459,7 +459,7 @@ func TestWrapConnection(t *testing.T) {
 		t.Fatal("Failed to create listener", err)
 	}
 
-	s := NewServer()
+	s := newServer()
 	s.up = make(chan net.Listener)
 
 	var called bool
@@ -499,7 +499,7 @@ func TestWrapConnection(t *testing.T) {
 // new requests once shutdown has begun
 func TestShutdown(t *testing.T) {
 
-	server := NewServer()
+	server := newServer()
 	wg := newTestWg()
 	server.wg = wg
 	listener, exitchan := startServer(t, server, nil)
@@ -533,68 +533,6 @@ func TestShutdown(t *testing.T) {
 	close(client1.sendrequest) // don't bother sending an actual request
 
 	<-exitchan
-}
-
-// Use the top level functions to instantiate servers and make sure
-// they all shutdown when Close() is called
-func TestGlobalShutdown(t *testing.T) {
-	laserr := make(chan error)
-	lastlserr := make(chan error)
-	serveerr := make(chan error)
-
-	go func() {
-		laserr <- ListenAndServe("127.0.0.1:0", nullHandler)
-	}()
-
-	go func() {
-		keyFile, _ := NewTempFile(localhostKey)
-		certFile, _ := NewTempFile(localhostCert)
-		defer keyFile.Unlink()
-		defer certFile.Unlink()
-		lastlserr <- ListenAndServeTLS("127.0.0.1:0", certFile.Name(), keyFile.Name(), nullHandler)
-	}()
-
-	go func() {
-		l := newFakeListener()
-		serveerr <- Serve(l, nullHandler)
-	}()
-
-	// wait for registration
-	expected := 3
-	var sl int
-	for sl < expected {
-		m.Lock()
-		sl = len(servers)
-		m.Unlock()
-		time.Sleep(time.Millisecond)
-	}
-
-	Close()
-
-	for i := 0; i < expected; i++ {
-		select {
-		case err := <-laserr:
-			if err != nil {
-				t.Error("ListenAndServe returned error", err)
-			}
-			laserr = nil
-
-		case err := <-lastlserr:
-			if err != nil {
-				t.Error("ListenAndServeTLS returned error", err)
-			}
-			lastlserr = nil
-
-		case err := <-serveerr:
-			if err != nil {
-				t.Error("Serve returned error", err)
-			}
-			serveerr = nil
-		case <-time.After(time.Second):
-			t.Fatal("Timed out waiting for servers to exit")
-		}
-	}
-
 }
 
 type tempFile struct {
