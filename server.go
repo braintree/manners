@@ -39,7 +39,10 @@ func (s *GracefulServer) ListenAndServe(addr string, handler http.Handler) error
 
 // Similar to http.Serve. The listener passed must wrap a GracefulListener.
 func (s *GracefulServer) Serve(listener net.Listener, handler http.Handler) error {
-	s.shutdownHandler = func() { listener.Close() }
+	s.shutdownHandler = func() {
+		s.InnerServer.SetKeepAlivesEnabled(false)
+		listener.Close()
+	}
 	s.listenForShutdown()
 	s.InnerServer.Handler = handler
 	s.InnerServer.ConnState = func(conn net.Conn, newState http.ConnState) {

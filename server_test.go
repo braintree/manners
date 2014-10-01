@@ -48,6 +48,7 @@ func TestGracefulness(t *testing.T) {
 // Tests that the server begins to shut down when told to and does not accept
 // new requests
 func TestShutdown(t *testing.T) {
+	url := "http://localhost:7100"
 	handler := newTestHandler()
 	server := NewServer()
 	exited := make(chan bool)
@@ -60,10 +61,18 @@ func TestShutdown(t *testing.T) {
 		exited <- true
 	}()
 
+	if r,_ := http.Get(url); r.Close {
+		t.Fatal("Keep-Alives were disabled pre-shutdown")
+	}
+
 	server.Shutdown <- true
 
+	if r,_ := http.Get(url); !r.Close  {
+		t.Fatal("Keep-Alives were enabled post-shutdown")
+	}
+
 	<-exited
-	_, err := http.Get("http://localhost:7100")
+	_, err := http.Get(url)
 
 	if err == nil {
 		t.Fatal("Did not receive an error when trying to connect to server.")
