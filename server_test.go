@@ -167,8 +167,8 @@ func TestStateTransitionActiveIdleClosed(t *testing.T) {
 		exitchan chan error
 	)
 
-	keyFile, err1 := NewTempFile(localhostKey)
-	certFile, err2 := NewTempFile(localhostCert)
+	keyFile, err1 := newTempFile(localhostKey)
+	certFile, err2 := newTempFile(localhostCert)
 	defer keyFile.Unlink()
 	defer certFile.Unlink()
 

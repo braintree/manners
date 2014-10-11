@@ -27,7 +27,7 @@ or for a customized server:
 	log.Fatal(s.ListenAndServe())
 
 
-The server will shutdown cleanly when the Close() method is called:
+The server will shut down cleanly when the Close() method is called:
 
 	go func() {
 		sigchan := make(chan os.Signal, 1)
@@ -79,7 +79,6 @@ func (s *GracefulServer) ListenAndServe() error {
 		return err
 	}
 
-	//listener := NewListener(tcpKeepAliveListener{oldListener.(*net.TCPListener)})
 	listener := NewListener(oldListener.(*net.TCPListener))
 	err = s.Serve(listener)
 	return err
@@ -119,12 +118,11 @@ func (s *GracefulServer) ListenAndServeTLS(certFile, keyFile string) error {
 
 // Serve provides a graceful equivalent net/http.Server.Serve.
 //
-// If listener is not an instance of *GracefulListener is will be wrapped
+// If listener is not an instance of *GracefulListener it will be wrapped
 // to become one.
 func (s *GracefulServer) Serve(listener net.Listener) error {
-	// accept a net.Listener to preserve the interface compatibility with the standard
-	// http.Server, but we except a GracefluListener
-	if _, ok := listener.(*GracefulListener); !ok {
+	_, ok := listener.(*GracefulListener)
+	if !ok {
 		listener = NewListener(listener)
 	}
 
@@ -137,47 +135,47 @@ func (s *GracefulServer) Serve(listener net.Listener) error {
 		listener.Close()
 	}()
 
-	orgConnState := s.Server.ConnState
+	originalConnState := s.Server.ConnState
 	s.ConnState = func(conn net.Conn, newState http.ConnState) {
 		gconn := conn.(*gracefulConn)
-		//fmt.Printf("%p %s -> %s\n", gconn, gconn.lastHTTPState, newState)
 		switch newState {
 		case http.StateNew:
-			// new_conn -> StateNew
+			// New connection -> StateNew
 			s.StartRoutine()
 
 		case http.StateActive:
 			// (StateNew, StateIdle) -> StateActive
 			if gconn.lastHTTPState == http.StateIdle {
-				// transitioned from idle back to active
+				// The connection transitioned from idle back to active
 				s.StartRoutine()
 			}
 
 		case http.StateIdle:
 			// StateActive -> StateIdle
+			// Immediately close newly idle connections; if not they may make
+			// one more request before SetKeepAliveEnabled(false) takes effect.
 			if atomic.LoadInt32(&closing) == 1 {
-				// rapidly close newly idle connections; if not they may make
-				// one more request before SetKeepAliveEnabled(false)  takes effect.
 				conn.Close()
 			}
 			s.FinishRoutine()
 
 		case http.StateClosed, http.StateHijacked:
 			// (StateNew, StateActive, StateIdle) -> (StateClosed, StateHiJacked)
+			// If the connection was idle we do not need to decrement the counter.
 			if gconn.lastHTTPState != http.StateIdle {
-				// if it was idle it's already been decremented
 				s.FinishRoutine()
 			}
 		}
+
 		gconn.lastHTTPState = newState
-		if orgConnState != nil {
-			orgConnState(conn, newState)
+		if originalConnState != nil {
+			originalConnState(conn, newState)
 		}
 	}
 
-	// only used by unit tests
+	// A hook to allow the server to notify others when it is ready to receive
+	// requests; only used by tests.
 	if s.up != nil {
-		// notify test that server is up; wait for signal to continue
 		s.up <- listener
 	}
 	err := s.Server.Serve(listener)

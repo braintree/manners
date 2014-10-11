@@ -17,13 +17,6 @@ func NewListener(l net.Listener) *GracefulListener {
 	return &GracefulListener{l, 1}
 }
 
-// A gracefulCon wraps a normal net.Conn and tracks the
-// last known http state.
-type gracefulConn struct {
-	net.Conn
-	lastHTTPState http.ConnState
-}
-
 // A GracefulListener differs from a standard net.Listener in one way: if
 // Accept() is called after it is gracefully closed, it returns a
 // listenerAlreadyClosed error. The GracefulServer will ignore this
@@ -56,16 +49,19 @@ func (l *GracefulListener) Close() error {
 	return nil
 }
 
-type listenerAlreadyClosed struct {
-	error
+// A gracefulConn wraps a normal net.Conn and tracks the
+// last known http state.
+type gracefulConn struct {
+	net.Conn
+	lastHTTPState http.ConnState
 }
 
 // tcpKeepAliveListener sets TCP keep-alive timeouts on accepted
 // connections. It's used by ListenAndServe and ListenAndServeTLS so
 // dead TCP connections (e.g. closing laptop mid-download) eventually
 // go away.
-//
-// direct lift from net/http/server.go
+
+// TODO: Make this value configureable.
 type tcpKeepAliveListener struct {
 	*net.TCPListener
 }
@@ -78,4 +74,8 @@ func (ln tcpKeepAliveListener) Accept() (c net.Conn, err error) {
 	tc.SetKeepAlive(true)
 	tc.SetKeepAlivePeriod(3 * time.Minute)
 	return tc, nil
+}
+
+type listenerAlreadyClosed struct {
+	error
 }

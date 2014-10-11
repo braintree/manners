@@ -133,7 +133,7 @@ type tempFile struct {
 	*os.File
 }
 
-func NewTempFile(content []byte) (*tempFile, error) {
+func newTempFile(content []byte) (*tempFile, error) {
 	f, err := ioutil.TempFile("", "graceful-test")
 	if err != nil {
 		return nil, err
