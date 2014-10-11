@@ -46,8 +46,19 @@ import (
 	"crypto/tls"
 	"net"
 	"net/http"
+	"sync"
 	"sync/atomic"
 )
+
+// NewWithServer wraps an existing http.Server object and returns a GracefulServer
+// that supports all of the original Server operations.
+func NewWithServer(s *http.Server) *GracefulServer {
+	return &GracefulServer{
+		Server:   s,
+		shutdown: make(chan struct{}),
+		wg:       new(sync.WaitGroup),
+	}
+}
 
 // A GracefulServer maintains a WaitGroup that counts how many in-flight
 // requests the server is handling. When it receives a shutdown signal,
