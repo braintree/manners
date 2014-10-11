@@ -79,7 +79,7 @@ func (s *GracefulServer) ListenAndServe() error {
 		return err
 	}
 
-	listener := NewListener(oldListener.(*net.TCPListener))
+	listener := NewListener(oldListener)
 	err = s.Serve(listener)
 	return err
 }
@@ -111,7 +111,7 @@ func (s *GracefulServer) ListenAndServeTLS(certFile, keyFile string) error {
 		return err
 	}
 
-	tlsListener := tls.NewListener(tcpKeepAliveListener{ln.(*net.TCPListener)}, config)
+	tlsListener := tls.NewListener(ln, config)
 	return s.Serve(NewListener(tlsListener))
 
 }
