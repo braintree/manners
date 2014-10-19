@@ -74,7 +74,7 @@ type GracefulServer struct {
 	shutdown chan struct{}
 	wg       waitgroup
 
-	// used by test code
+	// Only used by test code.
 	up chan net.Listener
 }
 

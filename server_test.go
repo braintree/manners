@@ -1,7 +1,6 @@
 package manners
 
 import (
-	"fmt"
 	"net"
 	"net/http"
 	"testing"
@@ -40,30 +39,46 @@ func TestGracefulness(t *testing.T) {
 	}
 }
 
-// Test the state machine in isolation without a network connection
-func TestStateTransitions(t *testing.T) {
-	for _, test := range stateTests {
-		fmt.Println("Starting test ", fmtstates(test.states))
-		server := newServer()
-		wg := newTestWg()
-		server.wg = wg
-		startServer(t, server, nil)
+// Tests that the server begins to shut down when told to and does not accept
+// new requests once shutdown has begun
+func TestShutdown(t *testing.T) {
+	server := newServer()
+	wg := newTestWg()
+	server.wg = wg
+	listener, exitchan := startServer(t, server, nil)
 
-		conn := &gracefulConn{nil, 0}
-		for _, newState := range test.states {
-			server.ConnState(conn, newState)
-		}
+	client1 := newClient(listener.Addr(), false)
+	client1.Run()
 
-		server.Close()
-		waiting := <-wg.waitCalled
-		if waiting != test.finalWgCount {
-			t.Errorf("%s - Waitcount should be %d, got %d", fmtstates(test.states), test.finalWgCount, waiting)
-		}
-
+	// wait for client1 to connect
+	if err := <-client1.connected; err != nil {
+		t.Fatal("Client failed to connect to server", err)
 	}
+
+	// start the shutdown; once it hits waitgroup.Wait()
+	// the listener should of been closed, though client1 is still connected
+	server.Close()
+
+	waiting := <-wg.waitCalled
+	if waiting != 1 {
+		t.Errorf("Waitcount should be one, got %d", waiting)
+	}
+
+	// should get connection refused at this point
+	client2 := newClient(listener.Addr(), false)
+	client2.Run()
+
+	if err := <-client2.connected; err == nil {
+		t.Fatal("client2 connected when it should of received connection refused")
+	}
+
+	// let client1 finish so the server can exit
+	close(client1.sendrequest) // don't bother sending an actual request
+
+	<-exitchan
 }
 
-// Test that a connection is closed upon reaching an idle state iff the server
+// Test that a connection is closed upon reaching an idle state if and only if the server
 // is shutting down.
 func TestCloseOnIdle(t *testing.T) {
 	server := newServer()
@@ -221,88 +236,4 @@ func TestStateTransitionActiveIdleClosed(t *testing.T) {
 			t.Error("Unexpected error during shutdown", err)
 		}
 	}
-}
-
-// Test that supplying a non GracefulListener to Serve works
-// correctly (ie. that the listener is wrapped to become graceful)
-func TestWrapConnection(t *testing.T) {
-	l, err := net.Listen("tcp", "localhost:0")
-	if err != nil {
-		t.Fatal("Failed to create listener", err)
-	}
-
-	s := newServer()
-	s.up = make(chan net.Listener)
-
-	var called bool
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		called = true
-		s.Close() // clean shutdown as soon as handler exits
-	})
-	s.Handler = handler
-
-	serverr := make(chan error)
-
-	go func() {
-		serverr <- s.Serve(l)
-	}()
-
-	gl := <-s.up
-	if _, ok := gl.(*GracefulListener); !ok {
-		t.Fatal("connection was not wrapped into a GracefulListener")
-	}
-
-	addr := l.Addr()
-	if _, err := http.Get("http://" + addr.String()); err != nil {
-		t.Fatal("Get failed", err)
-	}
-
-	if err := <-serverr; err != nil {
-		t.Fatal("Error from Serve()", err)
-	}
-
-	if !called {
-		t.Error("Handler was not called")
-	}
-
-}
-
-// Tests that the server begins to shut down when told to and does not accept
-// new requests once shutdown has begun
-func TestShutdown(t *testing.T) {
-
-	server := newServer()
-	wg := newTestWg()
-	server.wg = wg
-	listener, exitchan := startServer(t, server, nil)
-
-	client1 := newClient(listener.Addr(), false)
-	client1.Run()
-
-	// wait for client1 to connect
-	if err := <-client1.connected; err != nil {
-		t.Fatal("Client failed to connect to server", err)
-	}
-
-	// start the shutdown; once it hits waitgroup.Wait()
-	// the listener should of been closed, though client1 is still connected
-	server.Close()
-
-	waiting := <-wg.waitCalled
-	if waiting != 1 {
-		t.Errorf("Waitcount should be one, got %d", waiting)
-	}
-
-	// should get connection refused at this point
-	client2 := newClient(listener.Addr(), false)
-	client2.Run()
-
-	if err := <-client2.connected; err == nil {
-		t.Fatal("client2 connected when it should of received connection refused")
-	}
-
-	// let client1 finish so the server can exit
-	close(client1.sendrequest) // don't bother sending an actual request
-
-	<-exitchan
 }

@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"strings"
 	"testing"
 )
 
@@ -148,27 +147,4 @@ func (tf *tempFile) Unlink() {
 		os.Remove(tf.Name())
 		tf.File = nil
 	}
-}
-
-var stateTests = []struct {
-	states       []http.ConnState
-	finalWgCount int
-}{
-	{[]http.ConnState{http.StateNew, http.StateActive}, 1},
-	{[]http.ConnState{http.StateNew, http.StateClosed}, 0},
-	{[]http.ConnState{http.StateNew, http.StateActive, http.StateClosed}, 0},
-	{[]http.ConnState{http.StateNew, http.StateActive, http.StateHijacked}, 0},
-	{[]http.ConnState{http.StateNew, http.StateActive, http.StateIdle}, 0},
-	{[]http.ConnState{http.StateNew, http.StateActive, http.StateIdle, http.StateActive}, 1},
-	{[]http.ConnState{http.StateNew, http.StateActive, http.StateIdle, http.StateActive, http.StateIdle}, 0},
-	{[]http.ConnState{http.StateNew, http.StateActive, http.StateIdle, http.StateActive, http.StateClosed}, 0},
-	{[]http.ConnState{http.StateNew, http.StateActive, http.StateIdle, http.StateActive, http.StateIdle, http.StateClosed}, 0},
-}
-
-func fmtstates(states []http.ConnState) string {
-	names := make([]string, len(states))
-	for i, s := range states {
-		names[i] = s.String()
-	}
-	return strings.Join(names, " -> ")
 }

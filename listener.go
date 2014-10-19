@@ -25,7 +25,7 @@ type GracefulListener struct {
 	open int32
 }
 
-// Accept implements the Accept method in the Listener interface.
+// Accept implements the Accept method in the net.Listener interface.
 func (l *GracefulListener) Accept() (net.Conn, error) {
 	conn, err := l.Listener.Accept()
 	if err != nil {
@@ -39,7 +39,7 @@ func (l *GracefulListener) Accept() (net.Conn, error) {
 	return gconn, nil
 }
 
-// Close tells the wrapped listener to stop listening.  It is idempotent.
+// Close tells the wrapped Listener to stop listening.  It is idempotent.
 func (l *GracefulListener) Close() error {
 	if atomic.CompareAndSwapInt32(&l.open, 1, 0) {
 		err := l.Listener.Close()
@@ -48,7 +48,7 @@ func (l *GracefulListener) Close() error {
 	return nil
 }
 
-// A gracefulConn wraps a normal net.Conn and tracks the
+// A gracefulConn wraps a normal net.Conn and tracks its the
 // last known http state.
 type gracefulConn struct {
 	net.Conn
