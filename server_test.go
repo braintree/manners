@@ -109,8 +109,6 @@ func TestCloseOnIdle(t *testing.T) {
 	if !conn.closeCalled {
 		t.Error("Close was not called")
 	}
-
-	fl.acceptRelease <- true
 }
 
 func waitForState(t *testing.T, waiter chan http.ConnState, state http.ConnState, errmsg string) {

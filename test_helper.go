@@ -91,12 +91,7 @@ func startGenericServer(t *testing.T, server *GracefulServer, statechanged chan 
 	exitchan := make(chan error)
 
 	go func() {
-		err := runner()
-		if err != nil {
-			exitchan <- err
-		} else {
-			exitchan <- nil
-		}
+		exitchan <- runner()
 	}()
 
 	// wait for server socket to be bound
@@ -111,12 +106,9 @@ func startGenericServer(t *testing.T, server *GracefulServer, statechanged chan 
 	return l, exitchan
 }
 
-func startServer(t *testing.T, server *GracefulServer, statechanged chan http.ConnState) (l net.Listener, errc chan error) {
-	runner := func() error {
-		return server.ListenAndServe()
-	}
-
-	return startGenericServer(t, server, statechanged, runner)
+func startServer(t *testing.T, server *GracefulServer, statechanged chan http.ConnState) (
+	l net.Listener, errc chan error) {
+	return startGenericServer(t, server, statechanged, server.ListenAndServe)
 }
 
 func startTLSServer(t *testing.T, server *GracefulServer, certFile, keyFile string, statechanged chan http.ConnState) (l net.Listener, errc chan error) {

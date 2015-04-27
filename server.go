@@ -88,14 +88,12 @@ func (s *GracefulServer) Close() {
 
 // ListenAndServe provides a graceful equivalent of net/http.Serve.ListenAndServe.
 func (s *GracefulServer) ListenAndServe() error {
-	oldListener, err := net.Listen("tcp", s.Addr)
+	listener, err := net.Listen("tcp", s.Addr)
 	if err != nil {
 		return err
 	}
 
-	listener := NewListener(oldListener)
-	err = s.Serve(listener)
-	return err
+	return s.Serve(listener)
 }
 
 // ListenAndServeTLS provides a graceful equivalent of net/http.Serve.ListenAndServeTLS.
@@ -125,21 +123,12 @@ func (s *GracefulServer) ListenAndServeTLS(certFile, keyFile string) error {
 		return err
 	}
 
-	tlsListener := tls.NewListener(ln, config)
-	return s.Serve(NewListener(tlsListener))
+	return s.Serve(tls.NewListener(ln, config))
 
 }
 
 // Serve provides a graceful equivalent net/http.Server.Serve.
-//
-// If listener is not an instance of *GracefulListener it will be wrapped
-// to become one.
 func (s *GracefulServer) Serve(listener net.Listener) error {
-	_, ok := listener.(*GracefulListener)
-	if !ok {
-		listener = NewListener(listener)
-	}
-
 	if s.lastConnState == nil {
 		s.lastConnState = make(map[net.Conn]http.ConnState)
 	}
@@ -209,13 +198,11 @@ func (s *GracefulServer) Serve(listener net.Listener) error {
 	err := s.Server.Serve(listener)
 
 	// This block is reached when the server has received a shut down command.
-	if err == nil {
-		s.wg.Wait()
-		return nil
-	} else if _, ok := err.(listenerAlreadyClosed); ok {
+	if err == nil || atomic.LoadInt32(&closing) == 1 {
 		s.wg.Wait()
 		return nil
 	}
+
 	return err
 }
 
