@@ -87,7 +87,11 @@ func (s *GracefulServer) Close() {
 
 // ListenAndServe provides a graceful equivalent of net/http.Serve.ListenAndServe.
 func (s *GracefulServer) ListenAndServe() error {
-	listener, err := net.Listen("tcp", s.Addr)
+	addr := s.Addr
+	if addr == "" {
+		addr = ":http"
+	}
+	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
 	}
