@@ -13,7 +13,8 @@ func TestGracefulness(t *testing.T) {
 	server := newServer()
 	wg := newTestWg()
 	server.wg = wg
-	listener, exitchan := startServer(t, server, nil)
+	statechanged := make(chan http.ConnState)
+	listener, exitchan := startServer(t, server, statechanged)
 
 	client := newClient(listener.Addr(), false)
 	client.Run()
@@ -21,6 +22,10 @@ func TestGracefulness(t *testing.T) {
 	// wait for client to connect, but don't let it send the request yet
 	if err := <-client.connected; err != nil {
 		t.Fatal("Client failed to connect to server", err)
+	}
+	// avoid a race between the client connection and the server accept
+	if state := <-statechanged; state != http.StateNew {
+		t.Fatal("Unexpected state", state)
 	}
 
 	server.Close()
@@ -45,7 +50,8 @@ func TestShutdown(t *testing.T) {
 	server := newServer()
 	wg := newTestWg()
 	server.wg = wg
-	listener, exitchan := startServer(t, server, nil)
+	statechanged := make(chan http.ConnState)
+	listener, exitchan := startServer(t, server, statechanged)
 
 	client1 := newClient(listener.Addr(), false)
 	client1.Run()
@@ -53,6 +59,10 @@ func TestShutdown(t *testing.T) {
 	// wait for client1 to connect
 	if err := <-client1.connected; err != nil {
 		t.Fatal("Client failed to connect to server", err)
+	}
+	// avoid a race between the client connection and the server accept
+	if state := <-statechanged; state != http.StateNew {
+		t.Fatal("Unexpected state", state)
 	}
 
 	// start the shutdown; once it hits waitgroup.Wait()
