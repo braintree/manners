@@ -7,17 +7,16 @@ It can be used a drop-in replacement for the standard http package,
 or can wrap a pre-configured Server.
 
 eg.
-	myHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+	http.Handle("/hello", func(w http.ResponseWriter, r *http.Request) {
 	  w.Write([]byte("Hello\n"))
 	})
-
-	http.Handle("/hello", myHandler)
 
 	log.Fatal(manners.ListenAndServe(":8080", nil))
 
 or for a customized server:
 
-  s := manners.NewWithServer(&http.Server{
+	s := manners.NewWithServer(&http.Server{
 		Addr:           ":8080",
 		Handler:        myHandler,
 		ReadTimeout:    10 * time.Second,
@@ -25,7 +24,6 @@ or for a customized server:
 		MaxHeaderBytes: 1 << 20,
 	})
 	log.Fatal(s.ListenAndServe())
-
 
 The server will shut down cleanly when the Close() method is called:
 
@@ -50,13 +48,14 @@ import (
 	"sync/atomic"
 )
 
-// NewWithServer wraps an existing http.Server object and returns a GracefulServer
-// that supports all of the original Server operations.
+// NewWithServer wraps an existing http.Server object and returns a
+// GracefulServer that supports all of the original Server operations.
 func NewWithServer(s *http.Server) *GracefulServer {
 	return &GracefulServer{
-		Server:   s,
-		shutdown: make(chan struct{}),
-		wg:       new(sync.WaitGroup),
+		Server:        s,
+		shutdown:      make(chan struct{}),
+		wg:            new(sync.WaitGroup),
+		lastConnState: make(map[net.Conn]http.ConnState),
 	}
 }
 
@@ -68,17 +67,17 @@ func NewWithServer(s *http.Server) *GracefulServer {
 // GracefulServer embeds the underlying net/http.Server making its non-override
 // methods and properties avaiable.
 //
-// It must be initialized by calling NewServer or NewWithServer
+// It must be initialized by calling NewWithServer.
 type GracefulServer struct {
 	*http.Server
+
 	shutdown chan struct{}
 	wg       waitgroup
 
 	lcsmu         sync.RWMutex
 	lastConnState map[net.Conn]http.ConnState
 
-	// Only used by test code.
-	up chan net.Listener
+	up chan net.Listener // Only used by test code.
 }
 
 // Close stops the server from accepting new requets and beings shutting down.
@@ -124,15 +123,10 @@ func (s *GracefulServer) ListenAndServeTLS(certFile, keyFile string) error {
 	}
 
 	return s.Serve(tls.NewListener(ln, config))
-
 }
 
 // Serve provides a graceful equivalent net/http.Server.Serve.
 func (s *GracefulServer) Serve(listener net.Listener) error {
-	if s.lastConnState == nil {
-		s.lastConnState = make(map[net.Conn]http.ConnState)
-	}
-
 	var closing int32
 
 	go func() {
@@ -197,7 +191,8 @@ func (s *GracefulServer) Serve(listener net.Listener) error {
 	}
 	err := s.Server.Serve(listener)
 
-	// This block is reached when the server has received a shut down command.
+	// This block is reached when the server has received a shut down command
+	// or a real error happened.
 	if err == nil || atomic.LoadInt32(&closing) == 1 {
 		s.wg.Wait()
 		return nil
@@ -206,14 +201,15 @@ func (s *GracefulServer) Serve(listener net.Listener) error {
 	return err
 }
 
-// StartRoutine increments the server's WaitGroup. Use this if a web request starts more
-// goroutines and these goroutines are not guaranteed to finish before the
-// request.
+// StartRoutine increments the server's WaitGroup. Use this if a web request
+// starts more goroutines and these goroutines are not guaranteed to finish
+// before the request.
 func (s *GracefulServer) StartRoutine() {
 	s.wg.Add(1)
 }
 
-// FinishRoutine decrements the server's WaitGroup. Used this to complement StartRoutine().
+// FinishRoutine decrements the server's WaitGroup. Use this to complement
+// StartRoutine().
 func (s *GracefulServer) FinishRoutine() {
 	s.wg.Done()
 }

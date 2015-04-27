@@ -7,22 +7,22 @@ import (
 
 var defaultServer *GracefulServer
 
-// ListenAndServe provides a graceful version of the function provided by the net/http package.
-// Call Close() to stop the server.
+// ListenAndServe provides a graceful version of the function provided by the
+// net/http package. Call Close() to stop the server.
 func ListenAndServe(addr string, handler http.Handler) error {
 	defaultServer = NewWithServer(&http.Server{Addr: addr, Handler: handler})
 	return defaultServer.ListenAndServe()
 }
 
-// ListenAndServeTLS provides a graceful version of the function provided by the net/http package.
-// Call Close() to stop the server.
+// ListenAndServeTLS provides a graceful version of the function provided by the
+// net/http package. Call Close() to stop the server.
 func ListenAndServeTLS(addr string, certFile string, keyFile string, handler http.Handler) error {
 	defaultServer = NewWithServer(&http.Server{Addr: addr, Handler: handler})
 	return defaultServer.ListenAndServeTLS(certFile, keyFile)
 }
 
-// Serve provides a graceful version of the function provided by the net/http package.
-// Call Close() to stop the server.
+// Serve provides a graceful version of the function provided by the net/http
+// package. Call Close() to stop the server.
 func Serve(l net.Listener, handler http.Handler) error {
 	defaultServer = NewWithServer(&http.Server{Handler: handler})
 	return defaultServer.Serve(l)
