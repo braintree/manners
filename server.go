@@ -53,7 +53,7 @@ import (
 func NewWithServer(s *http.Server) *GracefulServer {
 	return &GracefulServer{
 		Server:        s,
-		shutdown:      make(chan struct{}),
+		shutdown:      make(chan bool),
 		wg:            new(sync.WaitGroup),
 		lastConnState: make(map[net.Conn]http.ConnState),
 	}
@@ -71,7 +71,7 @@ func NewWithServer(s *http.Server) *GracefulServer {
 type GracefulServer struct {
 	*http.Server
 
-	shutdown chan struct{}
+	shutdown chan bool
 	wg       waitgroup
 
 	lcsmu         sync.RWMutex
@@ -80,9 +80,10 @@ type GracefulServer struct {
 	up chan net.Listener // Only used by test code.
 }
 
-// Close stops the server from accepting new requets and beings shutting down.
-func (s *GracefulServer) Close() {
-	close(s.shutdown)
+// Close stops the server from accepting new requets and begins shutting down.
+// It returns true if it's the first time Close is called.
+func (s *GracefulServer) Close() bool {
+	return <-s.shutdown
 }
 
 // ListenAndServe provides a graceful equivalent of net/http.Serve.ListenAndServe.
@@ -134,7 +135,8 @@ func (s *GracefulServer) Serve(listener net.Listener) error {
 	var closing int32
 
 	go func() {
-		<-s.shutdown
+		s.shutdown <- true
+		close(s.shutdown)
 		atomic.StoreInt32(&closing, 1)
 		s.Server.SetKeepAlivesEnabled(false)
 		listener.Close()

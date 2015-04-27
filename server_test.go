@@ -67,7 +67,12 @@ func TestShutdown(t *testing.T) {
 
 	// start the shutdown; once it hits waitgroup.Wait()
 	// the listener should of been closed, though client1 is still connected
-	server.Close()
+	if server.Close() != true {
+		t.Fatal("first call to Close returned false")
+	}
+	if server.Close() != false {
+		t.Fatal("second call to Close returned true")
+	}
 
 	waiting := <-wg.waitCalled
 	if waiting != 1 {
