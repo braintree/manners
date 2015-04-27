@@ -48,17 +48,6 @@ import (
 	"sync/atomic"
 )
 
-// NewWithServer wraps an existing http.Server object and returns a
-// GracefulServer that supports all of the original Server operations.
-func NewWithServer(s *http.Server) *GracefulServer {
-	return &GracefulServer{
-		Server:        s,
-		shutdown:      make(chan bool),
-		wg:            new(sync.WaitGroup),
-		lastConnState: make(map[net.Conn]http.ConnState),
-	}
-}
-
 // A GracefulServer maintains a WaitGroup that counts how many in-flight
 // requests the server is handling. When it receives a shutdown signal,
 // it stops accepting new requests but does not actually shut down until
@@ -72,12 +61,29 @@ type GracefulServer struct {
 	*http.Server
 
 	shutdown chan bool
-	wg       waitgroup
+	wg       waitGroup
 
 	lcsmu         sync.RWMutex
 	lastConnState map[net.Conn]http.ConnState
 
 	up chan net.Listener // Only used by test code.
+}
+
+type waitGroup interface {
+	Add(int)
+	Done()
+	Wait()
+}
+
+// NewWithServer wraps an existing http.Server object and returns a
+// GracefulServer that supports all of the original Server operations.
+func NewWithServer(s *http.Server) *GracefulServer {
+	return &GracefulServer{
+		Server:        s,
+		shutdown:      make(chan bool),
+		wg:            new(sync.WaitGroup),
+		lastConnState: make(map[net.Conn]http.ConnState),
+	}
 }
 
 // Close stops the server from accepting new requets and begins shutting down.
