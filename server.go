@@ -74,6 +74,9 @@ type GracefulServer struct {
 	shutdown chan struct{}
 	wg       waitgroup
 
+	lcsmu         sync.RWMutex
+	lastConnState map[net.Conn]http.ConnState
+
 	// Only used by test code.
 	up chan net.Listener
 }
@@ -137,6 +140,10 @@ func (s *GracefulServer) Serve(listener net.Listener) error {
 		listener = NewListener(listener)
 	}
 
+	if s.lastConnState == nil {
+		s.lastConnState = make(map[net.Conn]http.ConnState)
+	}
+
 	var closing int32
 
 	go func() {
@@ -148,7 +155,10 @@ func (s *GracefulServer) Serve(listener net.Listener) error {
 
 	originalConnState := s.Server.ConnState
 	s.ConnState = func(conn net.Conn, newState http.ConnState) {
-		gconn := conn.(*gracefulConn)
+		s.lcsmu.RLock()
+		lastConnState := s.lastConnState[conn]
+		s.lcsmu.RUnlock()
+
 		switch newState {
 		case http.StateNew:
 			// New connection -> StateNew
@@ -156,7 +166,7 @@ func (s *GracefulServer) Serve(listener net.Listener) error {
 
 		case http.StateActive:
 			// (StateNew, StateIdle) -> StateActive
-			if gconn.lastHTTPState == http.StateIdle {
+			if lastConnState == http.StateIdle {
 				// The connection transitioned from idle back to active
 				s.StartRoutine()
 			}
@@ -173,12 +183,19 @@ func (s *GracefulServer) Serve(listener net.Listener) error {
 		case http.StateClosed, http.StateHijacked:
 			// (StateNew, StateActive, StateIdle) -> (StateClosed, StateHiJacked)
 			// If the connection was idle we do not need to decrement the counter.
-			if gconn.lastHTTPState != http.StateIdle {
+			if lastConnState != http.StateIdle {
 				s.FinishRoutine()
 			}
 		}
 
-		gconn.lastHTTPState = newState
+		s.lcsmu.Lock()
+		if newState == http.StateClosed || newState == http.StateHijacked {
+			delete(s.lastConnState, conn)
+		} else {
+			s.lastConnState[conn] = newState
+		}
+		s.lcsmu.Unlock()
+
 		if originalConnState != nil {
 			originalConnState(conn, newState)
 		}

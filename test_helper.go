@@ -82,8 +82,7 @@ func startGenericServer(t *testing.T, server *GracefulServer, statechanged chan 
 		// Wrap the ConnState handler with something that will notify
 		// the statechanged channel when a state change happens
 		server.ConnState = func(conn net.Conn, newState http.ConnState) {
-			s := conn.(*gracefulConn).lastHTTPState
-			statechanged <- s
+			statechanged <- newState
 		}
 	}
 

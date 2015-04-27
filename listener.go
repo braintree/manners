@@ -2,7 +2,6 @@ package manners
 
 import (
 	"net"
-	"net/http"
 	"sync/atomic"
 )
 
@@ -34,9 +33,7 @@ func (l *GracefulListener) Accept() (net.Conn, error) {
 		}
 		return nil, err
 	}
-
-	gconn := &gracefulConn{conn, 0}
-	return gconn, nil
+	return conn, nil
 }
 
 // Close tells the wrapped Listener to stop listening.  It is idempotent.
@@ -46,13 +43,6 @@ func (l *GracefulListener) Close() error {
 		return err
 	}
 	return nil
-}
-
-// A gracefulConn wraps a normal net.Conn and tracks its the
-// last known http state.
-type gracefulConn struct {
-	net.Conn
-	lastHTTPState http.ConnState
 }
 
 type listenerAlreadyClosed struct {

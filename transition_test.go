@@ -35,7 +35,7 @@ func testStateTransition(t *testing.T, test transitionTest) {
 	server.wg = wg
 	startServer(t, server, nil)
 
-	conn := &gracefulConn{nil, 0}
+	conn := &fakeConn{}
 	for _, newState := range test.states {
 		server.ConnState(conn, newState)
 	}
