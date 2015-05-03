@@ -69,12 +69,6 @@ type GracefulServer struct {
 	up chan net.Listener // Only used by test code.
 }
 
-type waitGroup interface {
-	Add(int)
-	Done()
-	Wait()
-}
-
 // NewWithServer wraps an existing http.Server object and returns a
 // GracefulServer that supports all of the original Server operations.
 func NewWithServer(s *http.Server) *GracefulServer {
@@ -149,38 +143,44 @@ func (s *GracefulServer) Serve(listener net.Listener) error {
 	}()
 
 	originalConnState := s.Server.ConnState
+
+	// s.ConnState is invoked by the net/http.Server every time a connectiion
+	// changes state. It keeps track of each connection's state over time,
+	// enabling manners to handle persisted connections correctly.
 	s.ConnState = func(conn net.Conn, newState http.ConnState) {
 		s.lcsmu.RLock()
 		lastConnState := s.lastConnState[conn]
 		s.lcsmu.RUnlock()
 
 		switch newState {
+
+		// New connection -> StateNew
 		case http.StateNew:
-			// New connection -> StateNew
 			s.StartRoutine()
 
-		case http.StateActive:
 			// (StateNew, StateIdle) -> StateActive
+		case http.StateActive:
+			// The connection transitioned from idle back to active
 			if lastConnState == http.StateIdle {
-				// The connection transitioned from idle back to active
 				s.StartRoutine()
 			}
 
-		case http.StateIdle:
 			// StateActive -> StateIdle
 			// Immediately close newly idle connections; if not they may make
 			// one more request before SetKeepAliveEnabled(false) takes effect.
+		case http.StateIdle:
 			if atomic.LoadInt32(&closing) == 1 {
 				conn.Close()
 			}
 			s.FinishRoutine()
 
-		case http.StateClosed, http.StateHijacked:
 			// (StateNew, StateActive, StateIdle) -> (StateClosed, StateHiJacked)
 			// If the connection was idle we do not need to decrement the counter.
+		case http.StateClosed, http.StateHijacked:
 			if lastConnState != http.StateIdle {
 				s.FinishRoutine()
 			}
+
 		}
 
 		s.lcsmu.Lock()
@@ -201,6 +201,7 @@ func (s *GracefulServer) Serve(listener net.Listener) error {
 	if s.up != nil {
 		s.up <- listener
 	}
+
 	err := s.Server.Serve(listener)
 
 	// This block is reached when the server has received a shut down command
