@@ -118,16 +118,6 @@ func startTLSServer(t *testing.T, server *GracefulServer, certFile, keyFile stri
 	return startGenericServer(t, server, statechanged, runner)
 }
 
-type fakeConn struct {
-	net.Conn
-	closeCalled bool
-}
-
-func (c *fakeConn) Close() error {
-	c.closeCalled = true
-	return nil
-}
-
 type fakeListener struct {
 	acceptRelease chan bool
 	closeCalled   chan bool

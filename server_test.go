@@ -108,9 +108,9 @@ func TestCloseOnIdle(t *testing.T) {
 	startGenericServer(t, server, nil, runner)
 
 	// Change to idle state while server is not closing; Close should not be called
-	conn := &fakeConn{}
+	conn := &helpers.Conn{}
 	server.ConnState(conn, http.StateIdle)
-	if conn.closeCalled {
+	if conn.CloseCalled {
 		t.Error("Close was called unexpected")
 	}
 
@@ -120,9 +120,9 @@ func TestCloseOnIdle(t *testing.T) {
 	// by that point the atomic closing variable will have been updated, avoiding a race.
 	<-fl.closeCalled
 
-	conn = &fakeConn{}
+	conn = &helpers.Conn{}
 	server.ConnState(conn, http.StateIdle)
-	if !conn.closeCalled {
+	if !conn.CloseCalled {
 		t.Error("Close was not called")
 	}
 }
