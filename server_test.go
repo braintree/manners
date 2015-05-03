@@ -13,7 +13,8 @@ func TestGracefulness(t *testing.T) {
 	server := newServer()
 	wg := newTestWg()
 	server.wg = wg
-	listener, exitchan := startServer(t, server, nil)
+	statechanged := make(chan http.ConnState)
+	listener, exitchan := startServer(t, server, statechanged)
 
 	client := newClient(listener.Addr(), false)
 	client.Run()
@@ -21,6 +22,10 @@ func TestGracefulness(t *testing.T) {
 	// wait for client to connect, but don't let it send the request yet
 	if err := <-client.connected; err != nil {
 		t.Fatal("Client failed to connect to server", err)
+	}
+	// avoid a race between the client connection and the server accept
+	if state := <-statechanged; state != http.StateNew {
+		t.Fatal("Unexpected state", state)
 	}
 
 	server.Close()
@@ -45,7 +50,8 @@ func TestShutdown(t *testing.T) {
 	server := newServer()
 	wg := newTestWg()
 	server.wg = wg
-	listener, exitchan := startServer(t, server, nil)
+	statechanged := make(chan http.ConnState)
+	listener, exitchan := startServer(t, server, statechanged)
 
 	client1 := newClient(listener.Addr(), false)
 	client1.Run()
@@ -54,10 +60,19 @@ func TestShutdown(t *testing.T) {
 	if err := <-client1.connected; err != nil {
 		t.Fatal("Client failed to connect to server", err)
 	}
+	// avoid a race between the client connection and the server accept
+	if state := <-statechanged; state != http.StateNew {
+		t.Fatal("Unexpected state", state)
+	}
 
 	// start the shutdown; once it hits waitgroup.Wait()
 	// the listener should of been closed, though client1 is still connected
-	server.Close()
+	if server.Close() != true {
+		t.Fatal("first call to Close returned false")
+	}
+	if server.Close() != false {
+		t.Fatal("second call to Close returned true")
+	}
 
 	waiting := <-wg.waitCalled
 	if waiting != 1 {
@@ -91,36 +106,24 @@ func TestCloseOnIdle(t *testing.T) {
 
 	startGenericServer(t, server, nil, runner)
 
-	fconn := &fakeConn{}
-	conn := &gracefulConn{fconn, http.StateActive}
-
 	// Change to idle state while server is not closing; Close should not be called
+	conn := &fakeConn{}
 	server.ConnState(conn, http.StateIdle)
-	if conn.lastHTTPState != http.StateIdle {
-		t.Errorf("State was not changed to idle")
-	}
-	if fconn.closeCalled {
+	if conn.closeCalled {
 		t.Error("Close was called unexpected")
 	}
 
-	// push back to active state
-	conn.lastHTTPState = http.StateActive
 	server.Close()
-	// race?
 
 	// wait until the server calls Close() on the listener
 	// by that point the atomic closing variable will have been updated, avoiding a race.
 	<-fl.closeCalled
 
+	conn = &fakeConn{}
 	server.ConnState(conn, http.StateIdle)
-	if conn.lastHTTPState != http.StateIdle {
-		t.Error("State was not changed to idle")
-	}
-	if !fconn.closeCalled {
+	if !conn.closeCalled {
 		t.Error("Close was not called")
 	}
-
-	fl.acceptRelease <- true
 }
 
 func waitForState(t *testing.T, waiter chan http.ConnState, state http.ConnState, errmsg string) {
