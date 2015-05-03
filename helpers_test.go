@@ -3,7 +3,6 @@ package manners
 import (
 	"bufio"
 	"crypto/tls"
-	"errors"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -116,27 +115,4 @@ func startTLSServer(t *testing.T, server *GracefulServer, certFile, keyFile stri
 	}
 
 	return startGenericServer(t, server, statechanged, runner)
-}
-
-type fakeListener struct {
-	acceptRelease chan bool
-	closeCalled   chan bool
-}
-
-func newFakeListener() *fakeListener { return &fakeListener{make(chan bool, 1), make(chan bool, 1)} }
-
-func (l *fakeListener) Addr() net.Addr {
-	addr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:8080")
-	return addr
-}
-
-func (l *fakeListener) Close() error {
-	l.closeCalled <- true
-	l.acceptRelease <- true
-	return nil
-}
-
-func (l *fakeListener) Accept() (net.Conn, error) {
-	<-l.acceptRelease
-	return nil, errors.New("connection closed")
 }

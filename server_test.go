@@ -100,7 +100,7 @@ func TestCloseOnIdle(t *testing.T) {
 	server := newServer()
 	wg := helpers.NewWaitGroup()
 	server.wg = wg
-	fl := newFakeListener()
+	fl := helpers.NewListener()
 	runner := func() error {
 		return server.Serve(fl)
 	}
@@ -118,7 +118,7 @@ func TestCloseOnIdle(t *testing.T) {
 
 	// wait until the server calls Close() on the listener
 	// by that point the atomic closing variable will have been updated, avoiding a race.
-	<-fl.closeCalled
+	<-fl.CloseCalled
 
 	conn = &helpers.Conn{}
 	server.ConnState(conn, http.StateIdle)
