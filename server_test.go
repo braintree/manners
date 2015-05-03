@@ -1,6 +1,7 @@
 package manners
 
 import (
+	helpers "github.com/braintree/manners/test_helpers"
 	"net"
 	"net/http"
 	"testing"
@@ -11,7 +12,7 @@ import (
 // before shutting down.
 func TestGracefulness(t *testing.T) {
 	server := newServer()
-	wg := newTestWg()
+	wg := helpers.NewWaitGroup()
 	server.wg = wg
 	statechanged := make(chan http.ConnState)
 	listener, exitchan := startServer(t, server, statechanged)
@@ -30,7 +31,7 @@ func TestGracefulness(t *testing.T) {
 
 	server.Close()
 
-	waiting := <-wg.waitCalled
+	waiting := <-wg.WaitCalled
 	if waiting < 1 {
 		t.Errorf("Expected the waitgroup to equal 1 at shutdown; actually %d", waiting)
 	}
@@ -48,7 +49,7 @@ func TestGracefulness(t *testing.T) {
 // new requests once shutdown has begun
 func TestShutdown(t *testing.T) {
 	server := newServer()
-	wg := newTestWg()
+	wg := helpers.NewWaitGroup()
 	server.wg = wg
 	statechanged := make(chan http.ConnState)
 	listener, exitchan := startServer(t, server, statechanged)
@@ -74,7 +75,7 @@ func TestShutdown(t *testing.T) {
 		t.Fatal("second call to Close returned true")
 	}
 
-	waiting := <-wg.waitCalled
+	waiting := <-wg.WaitCalled
 	if waiting != 1 {
 		t.Errorf("Waitcount should be one, got %d", waiting)
 	}
@@ -97,7 +98,7 @@ func TestShutdown(t *testing.T) {
 // is shutting down.
 func TestCloseOnIdle(t *testing.T) {
 	server := newServer()
-	wg := newTestWg()
+	wg := helpers.NewWaitGroup()
 	server.wg = wg
 	fl := newFakeListener()
 	runner := func() error {
@@ -143,7 +144,7 @@ func waitForState(t *testing.T, waiter chan http.ConnState, state http.ConnState
 // network connection still results in a corect shutdown
 func TestStateTransitionActiveIdleActive(t *testing.T) {
 	server := newServer()
-	wg := newTestWg()
+	wg := helpers.NewWaitGroup()
 	statechanged := make(chan http.ConnState)
 	server.wg = wg
 	listener, exitchan := startServer(t, server, statechanged)
@@ -167,7 +168,7 @@ func TestStateTransitionActiveIdleActive(t *testing.T) {
 	// client is now in an idle state
 
 	server.Close()
-	waiting := <-wg.waitCalled
+	waiting := <-wg.WaitCalled
 	if waiting != 0 {
 		t.Errorf("Waitcount should be zero, got %d", waiting)
 	}
@@ -185,8 +186,8 @@ func TestStateTransitionActiveIdleClosed(t *testing.T) {
 		exitchan chan error
 	)
 
-	keyFile, err1 := newTempFile(localhostKey)
-	certFile, err2 := newTempFile(localhostCert)
+	keyFile, err1 := helpers.NewTempFile(localhostKey)
+	certFile, err2 := helpers.NewTempFile(localhostCert)
 	defer keyFile.Unlink()
 	defer certFile.Unlink()
 
@@ -196,7 +197,7 @@ func TestStateTransitionActiveIdleClosed(t *testing.T) {
 
 	for _, withTLS := range []bool{false, true} {
 		server := newServer()
-		wg := newTestWg()
+		wg := helpers.NewWaitGroup()
 		statechanged := make(chan http.ConnState)
 		server.wg = wg
 		if withTLS {
@@ -230,7 +231,7 @@ func TestStateTransitionActiveIdleClosed(t *testing.T) {
 		waitForState(t, statechanged, http.StateClosed, "Client failed to reach closed state")
 
 		server.Close()
-		waiting := <-wg.waitCalled
+		waiting := <-wg.WaitCalled
 		if waiting != 0 {
 			t.Errorf("Waitcount should be zero, got %d", waiting)
 		}

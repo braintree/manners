@@ -7,8 +7,6 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
-	"os"
-	"sync"
 	"testing"
 )
 
@@ -119,57 +117,6 @@ func startTLSServer(t *testing.T, server *GracefulServer, certFile, keyFile stri
 	}
 
 	return startGenericServer(t, server, statechanged, runner)
-}
-
-type tempFile struct {
-	*os.File
-}
-
-func newTempFile(content []byte) (*tempFile, error) {
-	f, err := ioutil.TempFile("", "graceful-test")
-	if err != nil {
-		return nil, err
-	}
-
-	f.Write(content)
-	return &tempFile{f}, nil
-}
-
-func (tf *tempFile) Unlink() {
-	if tf.File != nil {
-		os.Remove(tf.Name())
-		tf.File = nil
-	}
-}
-
-type testWg struct {
-	sync.Mutex
-	count      int
-	waitCalled chan int
-}
-
-func newTestWg() *testWg {
-	return &testWg{
-		waitCalled: make(chan int, 1),
-	}
-}
-
-func (wg *testWg) Add(delta int) {
-	wg.Lock()
-	wg.count++
-	wg.Unlock()
-}
-
-func (wg *testWg) Done() {
-	wg.Lock()
-	wg.count--
-	wg.Unlock()
-}
-
-func (wg *testWg) Wait() {
-	wg.Lock()
-	wg.waitCalled <- wg.count
-	wg.Unlock()
 }
 
 type fakeConn struct {
