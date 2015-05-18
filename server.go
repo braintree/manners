@@ -226,3 +226,18 @@ func (s *GracefulServer) StartRoutine() {
 func (s *GracefulServer) FinishRoutine() {
 	s.wg.Done()
 }
+
+// ConnectionsCount returns the number of new or active connections.
+// We shutdown when this count becomes 0.
+func (s *GracefulServer) ConnectionCount() int {
+	s.lcsmu.RLock()
+	defer s.lcsmu.RUnlock()
+
+	var count int = 0
+	for _, connState := range s.lastConnState {
+		if connState == http.StateNew || connState == http.StateActive {
+			count++
+		}
+	}
+	return count
+}
