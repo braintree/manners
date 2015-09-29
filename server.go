@@ -60,8 +60,9 @@ import (
 type GracefulServer struct {
 	*http.Server
 
-	shutdown chan bool
-	wg       waitGroup
+	shutdown         chan bool
+	shutdownFinished chan bool
+	wg               waitGroup
 
 	lcsmu         sync.RWMutex
 	lastConnState map[net.Conn]http.ConnState
@@ -73,10 +74,11 @@ type GracefulServer struct {
 // GracefulServer that supports all of the original Server operations.
 func NewWithServer(s *http.Server) *GracefulServer {
 	return &GracefulServer{
-		Server:        s,
-		shutdown:      make(chan bool),
-		wg:            new(sync.WaitGroup),
-		lastConnState: make(map[net.Conn]http.ConnState),
+		Server:           s,
+		shutdown:         make(chan bool),
+		shutdownFinished: make(chan bool, 1),
+		wg:               new(sync.WaitGroup),
+		lastConnState:    make(map[net.Conn]http.ConnState),
 	}
 }
 
@@ -84,6 +86,14 @@ func NewWithServer(s *http.Server) *GracefulServer {
 // It returns true if it's the first time Close is called.
 func (s *GracefulServer) Close() bool {
 	return <-s.shutdown
+}
+
+// BlockingClose is similar to Close, except that it blocks until the last
+// connection has been closed.
+func (s *GracefulServer) BlockingClose() bool {
+	result := s.Close()
+	<-s.shutdownFinished
+	return result
 }
 
 // ListenAndServe provides a graceful equivalent of net/http.Serve.ListenAndServe.
@@ -140,6 +150,7 @@ func (s *GracefulServer) Serve(listener net.Listener) error {
 		atomic.StoreInt32(&closing, 1)
 		s.Server.SetKeepAlivesEnabled(false)
 		listener.Close()
+		s.shutdownFinished <- true
 	}()
 
 	originalConnState := s.Server.ConnState
