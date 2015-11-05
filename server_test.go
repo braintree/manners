@@ -8,6 +8,25 @@ import (
 	"time"
 )
 
+type httpInterface interface {
+	ListenAndServe() error
+	ListenAndServeTLS(certFile, keyFile string) error
+	Serve(listener net.Listener) error
+}
+
+// Test that the method signatures of the methods we override from net/http/Server match those of the original.
+func TestInterface(t *testing.T) {
+	var original, ours interface{}
+	original = &http.Server{}
+	ours = &GracefulServer{}
+	if _, ok := original.(httpInterface); !ok {
+		t.Errorf("httpInterface definition does not match the canonical server!")
+	}
+	if _, ok := ours.(httpInterface); !ok {
+		t.Errorf("GracefulServer does not implement httpInterface")
+	}
+}
+
 // Tests that the server allows in-flight requests to complete
 // before shutting down.
 func TestGracefulness(t *testing.T) {
@@ -24,10 +43,9 @@ func TestGracefulness(t *testing.T) {
 	if err := <-client.connected; err != nil {
 		t.Fatal("Client failed to connect to server", err)
 	}
-	// avoid a race between the client connection and the server accept
-	if state := <-statechanged; state != http.StateNew {
-		t.Fatal("Unexpected state", state)
-	}
+	// Even though the client is connected, the server ConnState handler may
+	// not know about that yet. So wait until it is called.
+	waitForState(t, statechanged, http.StateNew, "Request not received")
 
 	server.Close()
 
@@ -61,10 +79,9 @@ func TestShutdown(t *testing.T) {
 	if err := <-client1.connected; err != nil {
 		t.Fatal("Client failed to connect to server", err)
 	}
-	// avoid a race between the client connection and the server accept
-	if state := <-statechanged; state != http.StateNew {
-		t.Fatal("Unexpected state", state)
-	}
+	// Even though the client is connected, the server ConnState handler may
+	// not know about that yet. So wait until it is called.
+	waitForState(t, statechanged, http.StateNew, "Request not received")
 
 	// start the shutdown; once it hits waitgroup.Wait()
 	// the listener should of been closed, though client1 is still connected
@@ -94,36 +111,32 @@ func TestShutdown(t *testing.T) {
 	<-exitchan
 }
 
-// Test that a connection is closed upon reaching an idle state if and only if the server
-// is shutting down.
-func TestCloseOnIdle(t *testing.T) {
+// If a request is sent to a closed server via a kept alive connection then
+// the server closes the connection upon receiving the request.
+func TestRequestAfterClose(t *testing.T) {
+	// Given
 	server := newServer()
-	wg := helpers.NewWaitGroup()
-	server.wg = wg
-	fl := helpers.NewListener()
-	runner := func() error {
-		return server.Serve(fl)
-	}
+	srvStateChangedCh := make(chan http.ConnState, 100)
+	listener, srvClosedCh := startServer(t, server, srvStateChangedCh)
 
-	startGenericServer(t, server, nil, runner)
-
-	// Change to idle state while server is not closing; Close should not be called
-	conn := &helpers.Conn{}
-	server.ConnState(conn, http.StateIdle)
-	if conn.CloseCalled {
-		t.Error("Close was called unexpected")
-	}
+	client := newClient(listener.Addr(), false)
+	client.Run()
+	<-client.connected
+	client.sendrequest <- true
+	<-client.response
 
 	server.Close()
+	if err := <-srvClosedCh; err != nil {
+		t.Error("Unexpected error during shutdown", err)
+	}
 
-	// wait until the server calls Close() on the listener
-	// by that point the atomic closing variable will have been updated, avoiding a race.
-	<-fl.CloseCalled
+	// When
+	client.sendrequest <- true
+	rr := <-client.response
 
-	conn = &helpers.Conn{}
-	server.ConnState(conn, http.StateIdle)
-	if !conn.CloseCalled {
-		t.Error("Close was not called")
+	// Then
+	if rr.body != nil || rr.err != nil {
+		t.Errorf("Request should be rejected, body=%v, err=%v", rr.body, rr.err)
 	}
 }
 
@@ -160,8 +173,7 @@ func TestStateTransitionActiveIdleActive(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		client.sendrequest <- true
 		waitForState(t, statechanged, http.StateActive, "Client failed to reach active state")
-		<-client.idle
-		client.idlerelease <- true
+		<-client.response
 		waitForState(t, statechanged, http.StateIdle, "Client failed to reach idle state")
 	}
 
@@ -217,12 +229,11 @@ func TestStateTransitionActiveIdleClosed(t *testing.T) {
 		client.sendrequest <- true
 		waitForState(t, statechanged, http.StateActive, "Client failed to reach active state")
 
-		err := <-client.idle
-		if err != nil {
-			t.Fatalf("tls=%t unexpected error from client %s", withTLS, err)
+		rr := <-client.response
+		if rr.err != nil {
+			t.Fatalf("tls=%t unexpected error from client %s", withTLS, rr.err)
 		}
 
-		client.idlerelease <- true
 		waitForState(t, statechanged, http.StateIdle, "Client failed to reach idle state")
 
 		// client is now in an idle state

@@ -1,8 +1,8 @@
 package test_helpers
 
 import (
-  "net"
-  "errors"
+	"errors"
+	"net"
 )
 
 type Listener struct {
@@ -11,10 +11,10 @@ type Listener struct {
 }
 
 func NewListener() *Listener {
-  return &Listener{
-    make(chan bool, 1),
-    make(chan bool, 1),
-  }
+	return &Listener{
+		make(chan bool, 1),
+		make(chan bool, 1),
+	}
 }
 
 func (l *Listener) Addr() net.Addr {
