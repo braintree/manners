@@ -19,9 +19,13 @@ type client struct {
 	addr        net.Addr
 	connected   chan error
 	sendrequest chan bool
-	idle        chan error
-	idlerelease chan bool
+	response    chan *rawResponse
 	closed      chan bool
+}
+
+type rawResponse struct {
+	body []string
+	err  error
 }
 
 func (c *client) Run() {
@@ -39,19 +43,21 @@ func (c *client) Run() {
 		for <-c.sendrequest {
 			_, err = conn.Write([]byte("GET / HTTP/1.1\nHost: localhost:8000\n\n"))
 			if err != nil {
-				c.idle <- err
+				c.response <- &rawResponse{err: err}
 			}
 			// Read response; no content
 			scanner := bufio.NewScanner(conn)
+			var lines []string
 			for scanner.Scan() {
 				// our null handler doesn't send a body, so we know the request is
 				// done when we reach the blank line after the headers
-				if scanner.Text() == "" {
+				line := scanner.Text()
+				if line == "" {
 					break
 				}
+				lines = append(lines, line)
 			}
-			c.idle <- scanner.Err()
-			<-c.idlerelease
+			c.response <- &rawResponse{lines, scanner.Err()}
 		}
 		conn.Close()
 		ioutil.ReadAll(conn)
@@ -65,8 +71,7 @@ func newClient(addr net.Addr, tls bool) *client {
 		tls:         tls,
 		connected:   make(chan error),
 		sendrequest: make(chan bool),
-		idle:        make(chan error),
-		idlerelease: make(chan bool),
+		response:    make(chan *rawResponse),
 		closed:      make(chan bool),
 	}
 }
