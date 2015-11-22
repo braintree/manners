@@ -70,6 +70,11 @@ type GracefulServer struct {
 	up chan net.Listener // Only used by test code.
 }
 
+// NewServer creates a new GracefulServer.
+func NewServer() *GracefulServer {
+	return NewWithServer(new(http.Server))
+}
+
 // NewWithServer wraps an existing http.Server object and returns a
 // GracefulServer that supports all of the original Server operations.
 func NewWithServer(s *http.Server) *GracefulServer {

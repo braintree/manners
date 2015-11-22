@@ -9,10 +9,6 @@ import (
 	"testing"
 )
 
-func newServer() *GracefulServer {
-	return NewWithServer(new(http.Server))
-}
-
 // a simple step-controllable http client
 type client struct {
 	tls         bool
