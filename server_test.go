@@ -30,7 +30,7 @@ func TestInterface(t *testing.T) {
 // Tests that the server allows in-flight requests to complete
 // before shutting down.
 func TestGracefulness(t *testing.T) {
-	server := newServer()
+	server := NewServer()
 	wg := helpers.NewWaitGroup()
 	server.wg = wg
 	statechanged := make(chan http.ConnState)
@@ -66,7 +66,7 @@ func TestGracefulness(t *testing.T) {
 // Tests that the server begins to shut down when told to and does not accept
 // new requests once shutdown has begun
 func TestShutdown(t *testing.T) {
-	server := newServer()
+	server := NewServer()
 	wg := helpers.NewWaitGroup()
 	server.wg = wg
 	statechanged := make(chan http.ConnState)
@@ -115,7 +115,7 @@ func TestShutdown(t *testing.T) {
 // the server closes the connection upon receiving the request.
 func TestRequestAfterClose(t *testing.T) {
 	// Given
-	server := newServer()
+	server := NewServer()
 	srvStateChangedCh := make(chan http.ConnState, 100)
 	listener, srvClosedCh := startServer(t, server, srvStateChangedCh)
 
@@ -156,7 +156,7 @@ func waitForState(t *testing.T, waiter chan http.ConnState, state http.ConnState
 // Test that a request moving from active->idle->active using an actual
 // network connection still results in a corect shutdown
 func TestStateTransitionActiveIdleActive(t *testing.T) {
-	server := newServer()
+	server := NewServer()
 	wg := helpers.NewWaitGroup()
 	statechanged := make(chan http.ConnState)
 	server.wg = wg
@@ -208,7 +208,7 @@ func TestStateTransitionActiveIdleClosed(t *testing.T) {
 	}
 
 	for _, withTLS := range []bool{false, true} {
-		server := newServer()
+		server := NewServer()
 		wg := helpers.NewWaitGroup()
 		statechanged := make(chan http.ConnState)
 		server.wg = wg

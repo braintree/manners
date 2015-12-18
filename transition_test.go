@@ -31,7 +31,7 @@ type transitionTest struct {
 }
 
 func testStateTransition(t *testing.T, test transitionTest) {
-	server := newServer()
+	server := NewServer()
 	wg := helpers.NewWaitGroup()
 	server.wg = wg
 	startServer(t, server, nil)
