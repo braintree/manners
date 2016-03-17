@@ -1,11 +1,12 @@
 package manners
 
 import (
-	helpers "github.com/braintree/manners/test_helpers"
 	"net"
 	"net/http"
 	"testing"
 	"time"
+
+	helpers "github.com/braintree/manners/test_helpers"
 )
 
 type httpInterface interface {
@@ -250,5 +251,27 @@ func TestStateTransitionActiveIdleClosed(t *testing.T) {
 		if err := <-exitchan; err != nil {
 			t.Error("Unexpected error during shutdown", err)
 		}
+	}
+}
+
+func TestRoutinesCount(t *testing.T) {
+	var count int
+	server := NewServer()
+
+	count = server.RoutinesCount()
+	if count != 0 {
+		t.Errorf("Expected the routines count to equal 0; actually %d", count)
+	}
+
+	server.StartRoutine()
+	count = server.RoutinesCount()
+	if count != 1 {
+		t.Errorf("Expected the routines count to equal 1; actually %d", count)
+	}
+
+	server.FinishRoutine()
+	count = server.RoutinesCount()
+	if count != 0 {
+		t.Errorf("Expected the routines count to equal 0; actually %d", count)
 	}
 }
