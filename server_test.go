@@ -64,6 +64,18 @@ func TestGracefulness(t *testing.T) {
 	}
 }
 
+// Tests that starting the server and closing in 2 new, separate goroutines doesnot
+// get flagged by the race detector (need to run 'go test' w/the -race flag)
+func TestRacyClose(t *testing.T) {
+	go func() {
+		ListenAndServe(":9000", nil)
+	}()
+
+	go func() {
+		Close()
+	}()
+}
+
 // Tests that the server begins to shut down when told to and does not accept
 // new requests once shutdown has begun
 func TestShutdown(t *testing.T) {
