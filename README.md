@@ -6,12 +6,15 @@ Manners allows you to shut your Go webserver down gracefully, without dropping a
 
 ```go
 func main() {
-  handler := MyHTTPHandler()
-  manners.ListenAndServe(":7000", handler)
+  http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+    w.Write([]byte("Hello\n"))
+    manners.Close()
+  })
+  manners.ListenAndServe(":7000", http.DefaultServeMux)
 }
 ```
 
-Then, when you want to shut the server down:
+Notice, when you want to shut the server down:
 
 ```go
 manners.Close()
