@@ -63,7 +63,7 @@ type GracefulServer struct {
 	shutdown         chan bool
 	shutdownFinished chan bool
 	wg               waitGroup
-	routinesCount    int
+	routinesCount    int32
 
 	lcsmu       sync.RWMutex
 	connections map[net.Conn]bool
@@ -237,26 +237,20 @@ func (s *GracefulServer) Serve(listener net.Listener) error {
 // starts more goroutines and these goroutines are not guaranteed to finish
 // before the request.
 func (s *GracefulServer) StartRoutine() {
-	s.lcsmu.Lock()
-	defer s.lcsmu.Unlock()
 	s.wg.Add(1)
-	s.routinesCount++
+	atomic.AddInt32(&s.routinesCount, 1)
 }
 
 // FinishRoutine decrements the server's WaitGroup. Use this to complement
 // StartRoutine().
 func (s *GracefulServer) FinishRoutine() {
-	s.lcsmu.Lock()
-	defer s.lcsmu.Unlock()
 	s.wg.Done()
-	s.routinesCount--
+	atomic.AddInt32(&s.routinesCount, -1)
 }
 
 // RoutinesCount returns the number of currently running routines
 func (s *GracefulServer) RoutinesCount() int {
-	s.lcsmu.RLock()
-	defer s.lcsmu.RUnlock()
-	return s.routinesCount
+	return int(atomic.LoadInt32(&s.routinesCount))
 }
 
 // gracefulHandler is used by GracefulServer to prevent calling ServeHTTP on
