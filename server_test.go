@@ -287,3 +287,125 @@ func TestRoutinesCount(t *testing.T) {
 		t.Errorf("Expected the routines count to equal 0; actually %d", count)
 	}
 }
+
+// Test that supplying a non GracefulListener to Serve works
+// correctly (ie. that the listener is wrapped to become graceful)
+func TestWrapConnection(t *testing.T) {
+	l, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatal("Failed to create listener", err)
+	}
+
+	s := NewServer()
+	s.up = make(chan net.Listener)
+
+	var called bool
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		s.Close() // clean shutdown as soon as handler exits
+	})
+	s.Handler = handler
+
+	serverr := make(chan error)
+
+	go func() {
+		serverr <- s.Serve(l)
+	}()
+
+	gl := <-s.up
+	if _, ok := gl.(*GracefulListener); !ok {
+		t.Fatal("connection was not wrapped into a GracefulListener")
+	}
+
+	addr := l.Addr()
+	if _, err := http.Get("http://" + addr.String()); err != nil {
+		t.Fatal("Get failed", err)
+	}
+
+	if err := <-serverr; err != nil {
+		t.Fatal("Error from Serve()", err)
+	}
+
+	if !called {
+		t.Error("Handler was not called")
+	}
+
+}
+
+// Hijack listener
+func TestHijackListener(t *testing.T) {
+	server := NewServer()
+	wg := helpers.NewWaitGroup()
+	server.wg = wg
+	listener, exitchan := startServer(t, server, nil)
+
+	client := newClient(listener.Addr(), false)
+	client.Run()
+
+	// wait for client to connect, but don't let it send the request yet
+	if err := <-client.connected; err != nil {
+		t.Fatal("Client failed to connect to server", err)
+	}
+
+	// Make sure server1 got the request and added it to the waiting group
+	<-wg.CountChanged
+
+	wg2 := helpers.NewWaitGroup()
+	server2, err := server.HijackListener(new(http.Server), nil)
+	server2.wg = wg2
+	if err != nil {
+		t.Fatal("Failed to hijack listener", err)
+	}
+
+	listener2, exitchan2 := startServer(t, server2, nil)
+
+	// Close the first server
+	server.Close()
+
+	// First server waits for the first request to finish
+	waiting := <-wg.WaitCalled
+	if waiting < 1 {
+		t.Errorf("Expected the waitgroup to equal 1 at shutdown; actually %d", waiting)
+	}
+
+	// allow the client to finish sending the request and make sure the server exits after
+	// (client will be in connected but idle state at that point)
+	client.sendrequest <- true
+	close(client.sendrequest)
+	if err := <-exitchan; err != nil {
+		t.Error("Unexpected error during shutdown", err)
+	}
+
+	client2 := newClient(listener2.Addr(), false)
+	client2.Run()
+
+	// wait for client to connect, but don't let it send the request yet
+	select {
+	case err := <-client2.connected:
+		if err != nil {
+			t.Fatal("Client failed to connect to server", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Timeout connecting to the server", err)
+	}
+
+	// Close the second server
+	server2.Close()
+
+	waiting = <-wg2.WaitCalled
+	if waiting < 1 {
+		t.Errorf("Expected the waitgroup to equal 1 at shutdown; actually %d", waiting)
+	}
+
+	// allow the client to finish sending the request and make sure the server exits after
+	// (client will be in connected but idle state at that point)
+	client2.sendrequest <- true
+	// Make sure that request resulted in success
+	if rr := <-client2.response; rr.err != nil {
+		t.Errorf("Client failed to write the request, error: %s", err)
+	}
+	close(client2.sendrequest)
+	if err := <-exitchan2; err != nil {
+		t.Error("Unexpected error during shutdown", err)
+	}
+}
