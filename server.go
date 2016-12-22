@@ -46,6 +46,7 @@ import (
 	"net/http"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // A GracefulServer maintains a WaitGroup that counts how many in-flight
@@ -109,12 +110,12 @@ func (s *GracefulServer) ListenAndServe() error {
 	if addr == "" {
 		addr = ":http"
 	}
-	listener, err := net.Listen("tcp", addr)
+	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
 	}
 
-	return s.Serve(listener)
+	return s.Serve(keepAliveListener{ln.(*net.TCPListener)})
 }
 
 // ListenAndServeTLS provides a graceful equivalent of net/http.Serve.ListenAndServeTLS.
@@ -144,7 +145,7 @@ func (s *GracefulServer) ListenAndServeTLS(certFile, keyFile string) error {
 		return err
 	}
 
-	return s.Serve(tls.NewListener(ln, config))
+	return s.Serve(tls.NewListener(keepAliveListener{ln.(*net.TCPListener)}, config))
 }
 
 // Serve provides a graceful equivalent net/http.Server.Serve.
@@ -289,4 +290,22 @@ func (gh *gracefulHandler) Close() {
 
 func (gh *gracefulHandler) IsClosed() bool {
 	return atomic.LoadInt32(&gh.closed) == 1
+}
+
+// keepAliveListener sets TCP keep-alive with timeouts on accepted
+// connections. It's used by ListenAndServe and ListenAndServeTLS so
+// dead TCP connections (e.g. closing laptop mid-download) eventually
+// go away.
+type keepAliveListener struct {
+	*net.TCPListener
+}
+
+func (ln keepAliveListener) Accept() (c net.Conn, err error) {
+	tc, err := ln.AcceptTCP()
+	if err != nil {
+		return
+	}
+	tc.SetKeepAlive(true)
+	tc.SetKeepAlivePeriod(3 * time.Minute)
+	return tc, nil
 }
