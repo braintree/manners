@@ -103,13 +103,17 @@ func (s *GracefulServer) BlockingClose() bool {
 	return result
 }
 
-// ListenAndServe provides a graceful equivalent of net/http.Serve.ListenAndServe.
 func (s *GracefulServer) ListenAndServe() error {
+	return ListenAndServeWithNet("tcp")
+}
+
+// ListenAndServe provides a graceful equivalent of net/http.Serve.ListenAndServe.
+func (s *GracefulServer) ListenAndServeWithNet(netType string) error {
 	addr := s.Addr
 	if addr == "" {
 		addr = ":http"
 	}
-	listener, err := net.Listen("tcp", addr)
+	listener, err := net.Listen(netType, addr)
 	if err != nil {
 		return err
 	}
@@ -117,8 +121,12 @@ func (s *GracefulServer) ListenAndServe() error {
 	return s.Serve(listener)
 }
 
-// ListenAndServeTLS provides a graceful equivalent of net/http.Serve.ListenAndServeTLS.
 func (s *GracefulServer) ListenAndServeTLS(certFile, keyFile string) error {
+	return ListenAndServeTLSWithNet(certFile, keyFile, "tcp")
+}
+
+// ListenAndServeTLS provides a graceful equivalent of net/http.Serve.ListenAndServeTLS.
+func (s *GracefulServer) ListenAndServeTLSWithNet(certFile, keyFile string, netType string) error {
 	// direct lift from net/http/server.go
 	addr := s.Addr
 	if addr == "" {
@@ -139,7 +147,7 @@ func (s *GracefulServer) ListenAndServeTLS(certFile, keyFile string) error {
 		return err
 	}
 
-	ln, err := net.Listen("tcp", addr)
+	ln, err := net.Listen(netType, addr)
 	if err != nil {
 		return err
 	}
