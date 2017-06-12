@@ -18,6 +18,9 @@ func init() {
 // ListenAndServe provides a graceful version of the function provided by the
 // net/http package. Call Close() to stop the server.
 func ListenAndServe(addr string, handler http.Handler) error {
+	if handler == nil {
+		handler = http.DefaultServeMux
+	}
 	defaultServer = NewWithServer(&http.Server{Addr: addr, Handler: handler})
 	defaultServerLock.Unlock()
 	return defaultServer.ListenAndServe()
@@ -26,6 +29,9 @@ func ListenAndServe(addr string, handler http.Handler) error {
 // ListenAndServeTLS provides a graceful version of the function provided by the
 // net/http package. Call Close() to stop the server.
 func ListenAndServeTLS(addr string, certFile string, keyFile string, handler http.Handler) error {
+	if handler == nil {
+		handler = http.DefaultServeMux
+	}
 	defaultServer = NewWithServer(&http.Server{Addr: addr, Handler: handler})
 	defaultServerLock.Unlock()
 	return defaultServer.ListenAndServeTLS(certFile, keyFile)
@@ -34,6 +40,9 @@ func ListenAndServeTLS(addr string, certFile string, keyFile string, handler htt
 // Serve provides a graceful version of the function provided by the net/http
 // package. Call Close() to stop the server.
 func Serve(l net.Listener, handler http.Handler) error {
+	if handler == nil {
+		handler = http.DefaultServeMux
+	}
 	defaultServer = NewWithServer(&http.Server{Handler: handler})
 	defaultServerLock.Unlock()
 	return defaultServer.Serve(l)
