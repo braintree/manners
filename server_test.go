@@ -3,6 +3,7 @@ package manners
 import (
 	"net"
 	"net/http"
+	"runtime"
 	"testing"
 	"time"
 
@@ -74,6 +75,44 @@ func TestRacyClose(t *testing.T) {
 	go func() {
 		Close()
 	}()
+}
+
+// Tests that ListenAndServe works with the default handler
+func TestDefaultHandler(t *testing.T) {
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("Hello\n"))
+	})
+
+	go ListenAndServe(":9000", nil)
+
+	ok := waitForServer(":9000", 500*time.Millisecond)
+	if !ok {
+		t.Fatal("Couldn't start HTTP server")
+	}
+
+	_, err := http.Get("http://localhost:9000/")
+	if err != nil {
+		t.Fatal("Simple GET failed.")
+	}
+
+	Close()
+}
+
+func waitForServer(addr string, timeout time.Duration) bool {
+	start := time.Now()
+
+	for {
+		runtime.Gosched()
+
+		conn, err := net.Dial("tcp", addr)
+		if err == nil {
+			conn.Close()
+			return true
+		}
+		if time.Since(start) > timeout {
+			return false
+		}
+	}
 }
 
 // Tests that the server begins to shut down when told to and does not accept
