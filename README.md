@@ -34,3 +34,9 @@ Manners 0.3.0 and above uses standard library functionality introduced in Go 1.3
 ### Installation
 
 `go get github.com/braintree/manners`
+
+### Run examples
+
+`go run ./example.go`
+
+Open [http://localhost:8080](http://localhost:8080) on browser, then press `ctrl + C` to stop the program
